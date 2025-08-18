@@ -17,11 +17,18 @@ import resource
 from src.celery_app import celery as celery_app
 from src.models.user import db
 from src.models.metrics import JobMetric
-try:
-    from src.main import app as flask_app
-except Exception:
-    flask_app = None
+# Do not import Flask app at module level to avoid circular import
+flask_app = None
 
+def get_flask_app():
+    """Get Flask app instance, importing it on demand to avoid circular imports."""
+    global flask_app
+    if flask_app is None:
+        try:
+            from src.main import app as flask_app
+        except ImportError:
+            flask_app = None
+    return flask_app
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Memory safety guards (override via env if needed)
@@ -153,6 +160,7 @@ def orchestrate_gif_from_urls_task(self, urls, frame_duration, loop_count, base_
         try:
             jm = JobMetric(tool='gif-maker', task_id=self.request.id if getattr(self,'request',None) else None,
                            status='FAILURE', error_message=str(e), processing_time_ms=int((time.time()-_task_start)*1000))
+            flask_app = get_flask_app()
             if flask_app:
                 with flask_app.app_context(): db.session.add(jm); db.session.commit()
             else:
@@ -229,6 +237,7 @@ def convert_video_to_gif_task(self, video_path, start_time, duration, fps, width
             jm = JobMetric(tool='video-to-gif', task_id=self.request.id if getattr(self,'request',None) else None,
                            status='SUCCESS', input_type='video', output_size_bytes=os.path.getsize(output_gif) if os.path.exists(output_gif) else None,
                            processing_time_ms=int((time.time()-_task_start)*1000), options=f"fps={fps}; size={width}x{height}; peak_kb={peak_kb}; audio={include_audio}")
+            flask_app = get_flask_app()
             if flask_app:
                 with flask_app.app_context(): db.session.add(jm); db.session.commit()
             else:
@@ -241,6 +250,7 @@ def convert_video_to_gif_task(self, video_path, start_time, duration, fps, width
         try:
             jm = JobMetric(tool='video-to-gif', task_id=self.request.id if getattr(self,'request',None) else None,
                            status='FAILURE', error_message=str(e), processing_time_ms=int((time.time()-_task_start)*1000))
+            flask_app = get_flask_app()
             if flask_app:
                 with flask_app.app_context(): db.session.add(jm); db.session.commit()
             else:
@@ -407,6 +417,7 @@ def create_gif_from_images_task(self, image_paths, frame_duration=None, loop_cou
             jm = JobMetric(tool='gif-maker', task_id=self.request.id if getattr(self,'request',None) else None,
                            status='SUCCESS', input_type='images', output_size_bytes=os.path.getsize(output_path) if os.path.exists(output_path) else None,
                            processing_time_ms=int((time.time()-_task_start)*1000), options=f"n={len(image_paths)}; frame_ms={frame_duration}; peak_kb={peak_kb}; quality={quality_level}")
+            flask_app = get_flask_app()
             if flask_app:
                 with flask_app.app_context(): db.session.add(jm); db.session.commit()
             else:
@@ -419,6 +430,7 @@ def create_gif_from_images_task(self, image_paths, frame_duration=None, loop_cou
         try:
             jm = JobMetric(tool='gif-maker', task_id=self.request.id if getattr(self,'request',None) else None,
                            status='FAILURE', error_message=str(e), processing_time_ms=int((time.time()-_task_start)*1000))
+            flask_app = get_flask_app()
             if flask_app:
                 with flask_app.app_context(): db.session.add(jm); db.session.commit()
             else:
@@ -494,6 +506,7 @@ def resize_gif_task(self, gif_path, width, height, maintain_aspect_ratio, output
             jm = JobMetric(tool='resize', task_id=self.request.id if getattr(self,'request',None) else None,
                            status='SUCCESS', input_type='gif', output_size_bytes=os.path.getsize(output_path) if os.path.exists(output_path) else None,
                            processing_time_ms=int((time.time()-_task_start)*1000), options=f"size={width}x{height}; keep_ar={maintain_aspect_ratio}; peak_kb={peak_kb}")
+            flask_app = get_flask_app()
             if flask_app:
                 with flask_app.app_context(): db.session.add(jm); db.session.commit()
             else:
@@ -506,6 +519,7 @@ def resize_gif_task(self, gif_path, width, height, maintain_aspect_ratio, output
         try:
             jm = JobMetric(tool='resize', task_id=self.request.id if getattr(self,'request',None) else None,
                            status='FAILURE', error_message=str(e), processing_time_ms=int((time.time()-_task_start)*1000))
+            flask_app = get_flask_app()
             if flask_app:
                 with flask_app.app_context(): db.session.add(jm); db.session.commit()
             else:
@@ -588,6 +602,7 @@ def crop_gif_task(self, gif_path, x, y, width, height, aspect_ratio, output_dir,
             jm = JobMetric(tool='crop', task_id=self.request.id if getattr(self,'request',None) else None,
                            status='SUCCESS', input_type='gif', output_size_bytes=os.path.getsize(output_path) if os.path.exists(output_path) else None,
                            processing_time_ms=int((time.time()-_task_start)*1000), options=f"crop={x},{y},{width},{height}; ar={aspect_ratio}; peak_kb={peak_kb}")
+            flask_app = get_flask_app()
             if flask_app:
                 with flask_app.app_context(): db.session.add(jm); db.session.commit()
             else:
@@ -600,6 +615,7 @@ def crop_gif_task(self, gif_path, x, y, width, height, aspect_ratio, output_dir,
         try:
             jm = JobMetric(tool='crop', task_id=self.request.id if getattr(self,'request',None) else None,
                            status='FAILURE', error_message=str(e), processing_time_ms=int((time.time()-_task_start)*1000))
+            flask_app = get_flask_app()
             if flask_app:
                 with flask_app.app_context(): db.session.add(jm); db.session.commit()
             else:
@@ -749,6 +765,7 @@ def optimize_gif_task(self, gif_path, quality, colors, lossy, dither, optimize_l
             jm = JobMetric(tool='optimize', task_id=self.request.id if getattr(self,'request',None) else None,
                            status='SUCCESS', input_type='gif', output_size_bytes=os.path.getsize(output_path) if os.path.exists(output_path) else None,
                            processing_time_ms=int((time.time()-_task_start)*1000), options=f"quality={quality}; colors={colors}; lossy={lossy}; dither={dither}; level={optimize_level}; peak_kb={peak_kb}")
+            flask_app = get_flask_app()
             if flask_app:
                 with flask_app.app_context(): db.session.add(jm); db.session.commit()
             else:
@@ -761,6 +778,7 @@ def optimize_gif_task(self, gif_path, quality, colors, lossy, dither, optimize_l
         try:
             jm = JobMetric(tool='optimize', task_id=self.request.id if getattr(self,'request',None) else None,
                            status='FAILURE', error_message=str(e), processing_time_ms=int((time.time()-_task_start)*1000))
+            flask_app = get_flask_app()
             if flask_app:
                 with flask_app.app_context(): db.session.add(jm); db.session.commit()
             else:
@@ -1046,6 +1064,7 @@ def add_text_to_gif_task(self, gif_path, text, font_size, color, font_family, st
                 processing_time_ms=proc_ms,
                 options=f"anim={animation_style}; stroke={stroke_width}; font={font_family}; peak_kb={peak_kb}"
             )
+            flask_app = get_flask_app()
             if flask_app:
                 with flask_app.app_context():
                     db.session.add(jm)
@@ -1066,6 +1085,7 @@ def add_text_to_gif_task(self, gif_path, text, font_size, color, font_family, st
                 error_message=str(e),
                 processing_time_ms=int((time.time() - _task_start) * 1000)
             )
+            flask_app = get_flask_app()
             if flask_app:
                 with flask_app.app_context():
                     db.session.add(jm)
@@ -1348,6 +1368,7 @@ def add_text_layers_to_gif_task(self, gif_path, layers, output_dir, upload_folde
                 processing_time_ms=proc_ms,
                 options=f"layers={len(layers)}; peak_kb={peak_kb}"
             )
+            flask_app = get_flask_app()
             if flask_app:
                 with flask_app.app_context():
                     db.session.add(jm)
@@ -1368,6 +1389,7 @@ def add_text_layers_to_gif_task(self, gif_path, layers, output_dir, upload_folde
                 error_message=str(e),
                 processing_time_ms=int((time.time() - _task_start) * 1000)
             )
+            flask_app = get_flask_app()
             if flask_app:
                 with flask_app.app_context():
                     db.session.add(jm)

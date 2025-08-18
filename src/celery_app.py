@@ -33,13 +33,7 @@ celery.conf.result_backend = result_backend
 print(f"[Celery Debug] broker_url: {celery.conf.broker_url}")
 print(f"[Celery Debug] result_backend: {celery.conf.result_backend}")
 
-# Import the Flask app module so that it can configure Celery with Flask app context
-# (create_app() in main.py calls configure_celery(app, celery))
-try:
-	from src import main as _flask_main  # noqa: F401
-except Exception as _e:
-	# In some tooling contexts this may fail; worker can still run but DB ops may lack app context
-	print(f"[Celery Debug] Warning: failed to import Flask app for Celery context: {_e}")
-
-# Import tasks to register them with Celery (after app import)
-from src import tasks  # noqa: F401
+# Do not import the Flask app or tasks here: importing `src.main` or `src.tasks`
+# at module import time can create a circular import (celery_app -> main -> celery_app).
+# The Flask app will call `configure_celery(app, celery)` and import tasks after
+# Celery is configured. Keeping this module minimal avoids circular import issues.

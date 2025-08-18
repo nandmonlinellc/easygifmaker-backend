@@ -153,7 +153,7 @@ def ai_add_text_layers():
             prepared_layers.append(entry)
 
         # Dispatch task
-        task = add_text_layers_to_gif_task.delay(gif_path_for_probe, prepared_layers, temp_dir, upload_folder)
+        task = add_text_layers_to_gif_task.apply_async([gif_path_for_probe, prepared_layers, temp_dir, upload_folder], queue="fileops")
         logging.info(f"/ai/add-text returning task id: {task.id}")
         return jsonify({"task_id": task.id}), 202
     except Exception as e:
@@ -280,7 +280,7 @@ def create_gif_from_images():
                 max_content_length = current_app.config['MAX_CONTENT_LENGTH']
                 logging.info(f"Calling orchestrate_gif_from_urls_task with: urls={urls}, frame_duration={frame_duration}, loop_count={loop_count}, temp_dir={session_dir}, upload_folder={upload_folder}, max_content_length={max_content_length}")
                 try:
-                    chord_id = orchestrate_gif_from_urls_task.delay(urls, frame_duration, loop_count, session_dir, upload_folder, max_content_length)
+                    chord_id = orchestrate_gif_from_urls_task.apply_async([urls, frame_duration, loop_count, session_dir, upload_folder, max_content_length], queue="fileops")
                 except Exception as pub_err:
                     logging.error(f"Failed to publish orchestrate_gif_from_urls_task to broker: {pub_err}", exc_info=True)
                     return jsonify({"error": "queue_unavailable", "message": "Background queue is currently unavailable. Please retry shortly."}), 503
@@ -326,15 +326,9 @@ def create_gif_from_images():
             # Fallback to global frame_duration if per-frame not provided
             frame_duration = int(request.form.get("frame_duration", 500))
             try:
-                task = create_gif_from_images_task.delay(
-                    images,
-                    frame_duration,
-                    loop_count,
-                    session_dir,
-                    upload_folder,
-                    "high",
-                    frame_durations,
-                    effects
+                task = create_gif_from_images_task.apply_async(
+                    args=[images, frame_duration, loop_count, session_dir, upload_folder, "high", frame_durations, effects],
+                    queue="fileops"
                 )
             except Exception as pub_err:
                 logging.error(f"Failed to publish create_gif_from_images_task to broker: {pub_err}", exc_info=True)
@@ -405,7 +399,7 @@ def convert_video_to_gif():
 
         logging.debug(f"[video-to-gif] video_path={video_path}, start_time={start_time}, duration={duration}, fps={fps}, width={width}, height={height}, session_dir={session_dir}, upload_folder={upload_folder}, include_audio={include_audio}")
         # Pass include_audio to the Celery task
-        task = convert_video_to_gif_task.delay(video_path, start_time, duration, fps, width, height, session_dir, upload_folder, include_audio)
+        task = convert_video_to_gif_task.apply_async([video_path, start_time, duration, fps, width, height, session_dir, upload_folder, include_audio], queue="fileops")
         logging.info(f"/video-to-gif returning task id: {task.id}")
         return jsonify({"task_id": task.id}), 202
     except Exception as e:
@@ -448,7 +442,7 @@ def resize_gif():
                         # Unsupported file type
                         raise Exception(f"Unsupported file type for resize: {ext}")
                 # Start the download task, then on success, call process_downloaded_file
-                result = download_task.apply_async()
+                result = download_task.apply_async([], queue="fileops")
                 result.then(process_downloaded_file)
                 logging.info(f"/resize (url) returning task id: {result.id}")
                 return jsonify({"task_id": result.id}), 202
@@ -466,7 +460,7 @@ def resize_gif():
                 file.save(gif_path)
             
             upload_folder = current_app.config['UPLOAD_FOLDER']
-            task = resize_gif_task.delay(gif_path, width, height, maintain_aspect_ratio, temp_dir, upload_folder)
+            task = resize_gif_task.apply_async([gif_path, width, height, maintain_aspect_ratio, temp_dir, upload_folder], queue="fileops")
             logging.info(f"/resize (file) returning task id: {task.id}")
             return jsonify({"task_id": task.id}), 202
             
@@ -501,7 +495,7 @@ def crop_gif():
                 # Download file from URL, then crop in a Celery chain
                 download_task = handle_upload_task.s(url, temp_dir, upload_folder, max_content_length)
                 crop_task = crop_gif_task.s(x, y, width, height, aspect_ratio, temp_dir, upload_folder)
-                chain_result = (download_task | crop_task).apply_async()
+                chain_result = (download_task | crop_task).apply_async([], queue="fileops")
                 logging.info(f"/crop (url) returning task id: {chain_result.id}")
                 return jsonify({"task_id": chain_result.id}), 202
             else:
@@ -518,7 +512,7 @@ def crop_gif():
                 file.save(gif_path)
             
             upload_folder = current_app.config['UPLOAD_FOLDER']
-            task = crop_gif_task.delay(gif_path, x, y, width, height, aspect_ratio, temp_dir, upload_folder)
+            task = crop_gif_task.apply_async([gif_path, x, y, width, height, aspect_ratio, temp_dir, upload_folder], queue="fileops")
             logging.info(f"/crop (file) returning task id: {task.id}")
             return jsonify({"task_id": task.id}), 202
             
@@ -553,7 +547,7 @@ def optimize_gif():
                 # Create a chain: download first, then optimize.
                 optimize_signature = optimize_gif_task.s(quality, colors, lossy, dither, optimize_level, temp_dir, upload_folder)
                 task_chain = chain(handle_upload_task.s(url, temp_dir, upload_folder, max_content_length), optimize_signature)
-                task = task_chain.apply_async()
+                task = task_chain.apply_async([], queue="fileops")
                 logging.info(f"/optimize (url) returning task id: {task.id}")
                 return jsonify({"task_id": task.id}), 202
             else:
@@ -570,7 +564,7 @@ def optimize_gif():
                 file.save(gif_path)
             
             upload_folder = current_app.config['UPLOAD_FOLDER']
-            task = optimize_gif_task.delay(gif_path, quality, colors, lossy, dither, optimize_level, temp_dir, upload_folder)
+            task = optimize_gif_task.apply_async([gif_path, quality, colors, lossy, dither, optimize_level, temp_dir, upload_folder], queue="fileops")
             logging.info(f"/optimize (file) returning task id: {task.id}")
             return jsonify({"task_id": task.id}), 202
             
@@ -665,14 +659,14 @@ def add_text_to_gif():
                         start_frame, end_frame, animation_style, temp_dir, upload_folder
                     )
                 )
-                task = task_chain.apply_async()
+                task = task_chain.apply_async([], queue="fileops")
                 logging.info(f"/add-text (url) returning task id: {task.id}")
                 return jsonify({"task_id": task.id}), 202
             else:
                 # For file upload, reuse gif_path_for_probe for the task
                 gif_path = gif_path_for_probe
                 upload_folder = current_app.config['UPLOAD_FOLDER']
-                task = add_text_to_gif_task.delay(
+                task = add_text_to_gif_task.apply_async(
                     gif_path, text, font_size, color, font_family, stroke_color, stroke_width,
                     horizontal_align, vertical_align, offset_x, offset_y,
                     start_frame, end_frame, animation_style, temp_dir, upload_folder
@@ -783,13 +777,13 @@ def add_text_layers_to_gif():
                     handle_upload_task.s(url, temp_dir, upload_folder, max_content_length),
                     add_text_layers_to_gif_task.s(prepared_layers, temp_dir, upload_folder)
                 )
-                task = task_chain.apply_async()
+                task = task_chain.apply_async([], queue="fileops")
                 logging.info(f"/add-text-layers (url) returning task id: {task.id}")
                 return jsonify({"task_id": task.id}), 202
             else:
                 # For file upload, use saved path
                 gif_path = gif_path_for_probe
-                task = add_text_layers_to_gif_task.delay(gif_path, prepared_layers, temp_dir, upload_folder)
+                task = add_text_layers_to_gif_task.apply_async([gif_path, prepared_layers, temp_dir, upload_folder], queue="fileops")
                 logging.info(f"/add-text-layers (file) returning task id: {task.id}")
                 return jsonify({"task_id": task.id}), 202
         finally:

@@ -119,6 +119,8 @@ def create_app():
     print(f"[Flask Debug] Celery result_backend: {celery_app.conf.result_backend}")
     app.celery = celery_app
 
+    # Import tasks now that Celery has been configured so tasks can register safely
+    import src.tasks  # noqa: F401
     # Import blueprints and tasks AFTER Celery is configured
     from src.routes.gif import gif_bp
     # from src.routes.user import user_bp  # Disabled for MVP
