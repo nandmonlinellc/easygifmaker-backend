@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
+    <title>EasyGIFMaker - Create and Edit GIFs Online</title>
+    <meta name="description" content="Create, edit, and optimize GIFs online for free. Convert videos to GIFs, resize, crop, add text, and more. No registration required." />
+    
+    <!-- Fallback meta tags for specific routes -->
+    <script>
+      // Detect route and set appropriate meta tags immediately
+      (function() {
+        const path = window.location.pathname;
+        const metaDescription = document.querySelector('meta[name="description"]');
+        const title = document.querySelector('title');
+        const ogUrl = document.querySelector('meta[property="og:url"]');
+        const ogTitle = document.querySelector('meta[property="og:title"]');
+        const ogDescription = document.querySelector('meta[property="og:description"]');
+        const twitterTitle = document.querySelector('meta[name="twitter:title"]');
+        const twitterDescription = document.querySelector('meta[name="twitter:description"]');
+        
+        if (path === '/gif-maker') {
+          title.textContent = 'GIF Maker - Create Animated GIFs from Images | EasyGIFMaker';
+          metaDescription.setAttribute('content', 'Create animated GIFs from multiple images online for free. Upload images, set custom timing, and generate high-quality GIFs instantly. No registration required.');
+          ogUrl.setAttribute('content', 'https://easygifmaker.com/gif-maker');
+          ogTitle.setAttribute('content', 'GIF Maker - Create Animated GIFs from Images | EasyGIFMaker');
+          ogDescription.setAttribute('content', 'Create animated GIFs from multiple images online for free. Upload images, set custom timing, and generate high-quality GIFs instantly. No registration required.');
+          twitterTitle.setAttribute('content', 'GIF Maker - Create Animated GIFs from Images | EasyGIFMaker');
+          twitterDescription.setAttribute('content', 'Create animated GIFs from multiple images online for free. Upload images, set custom timing, and generate high-quality GIFs instantly. No registration required.');
+        } else if (path === '/video-to-gif') {
+          title.textContent = 'Video to GIF Converter - Convert Videos to GIFs Online | EasyGIFMaker';
+          metaDescription.setAttribute('content', 'Convert videos to GIFs online for free. Upload video files or paste URLs to create animated GIFs instantly. No registration required.');
+          ogUrl.setAttribute('content', 'https://easygifmaker.com/video-to-gif');
+          ogTitle.setAttribute('content', 'Video to GIF Converter - Convert Videos to GIFs Online | EasyGIFMaker');
+          ogDescription.setAttribute('content', 'Convert videos to GIFs online for free. Upload video files or paste URLs to create animated GIFs instantly. No registration required.');
+          twitterTitle.setAttribute('content', 'Video to GIF Converter - Convert Videos to GIFs Online | EasyGIFMaker');
+          twitterDescription.setAttribute('content', 'Convert videos to GIFs online for free. Upload video files or paste URLs to create animated GIFs instantly. No registration required.');
+        } else if (path === '/resize') {
+          title.textContent = 'Resize GIF - Resize and Scale GIFs Online | EasyGIFMaker';
+          metaDescription.setAttribute('content', 'Resize and scale GIFs online for free. Change GIF dimensions while maintaining quality. Perfect for social media, websites, and messaging apps.');
+          ogUrl.setAttribute('content', 'https://easygifmaker.com/resize');
+          ogTitle.setAttribute('content', 'Resize GIF - Resize and Scale GIFs Online | EasyGIFMaker');
+          ogDescription.setAttribute('content', 'Resize and scale GIFs online for free. Change GIF dimensions while maintaining quality. Perfect for social media, websites, and messaging apps.');
+          twitterTitle.setAttribute('content', 'Resize GIF - Resize and Scale GIFs Online | EasyGIFMaker');
+          twitterDescription.setAttribute('content', 'Resize and scale GIFs online for free. Change GIF dimensions while maintaining quality. Perfect for social media, websites, and messaging apps.');
+        } else if (path === '/crop') {
+          title.textContent = 'Crop GIF - Crop and Trim GIFs Online | EasyGIFMaker';
+          metaDescription.setAttribute('content', 'Crop and trim GIFs online for free. Remove unwanted parts and focus on the important content. Perfect for social media and messaging.');
+          ogUrl.setAttribute('content', 'https://easygifmaker.com/crop');
+          ogTitle.setAttribute('content', 'Crop GIF - Crop and Trim GIFs Online | EasyGIFMaker');
+          ogDescription.setAttribute('content', 'Crop and trim GIFs online for free. Remove unwanted parts and focus on the important content. Perfect for social media and messaging.');
+          twitterTitle.setAttribute('content', 'Crop GIF - Crop and Trim GIFs Online | EasyGIFMaker');
+          twitterDescription.setAttribute('content', 'Crop and trim GIFs online for free. Remove unwanted parts and focus on the important content. Perfect for social media and messaging.');
+        } else if (path === '/optimize') {
+          title.textContent = 'Optimize GIF - Compress and Optimize GIFs Online | EasyGIFMaker';
+          metaDescription.setAttribute('content', 'Optimize and compress GIFs online for free. Reduce file size while maintaining quality. Perfect for faster loading and sharing.');
+          ogUrl.setAttribute('content', 'https://easygifmaker.com/optimize');
+          ogTitle.setAttribute('content', 'Optimize GIF - Compress and Optimize GIFs Online | EasyGIFMaker');
+          ogDescription.setAttribute('content', 'Optimize and compress GIFs online for free. Reduce file size while maintaining quality. Perfect for faster loading and sharing.');
+          twitterTitle.setAttribute('content', 'Optimize GIF - Compress and Optimize GIFs Online | EasyGIFMaker');
+          twitterDescription.setAttribute('content', 'Optimize and compress GIFs online for free. Reduce file size while maintaining quality. Perfect for faster loading and sharing.');
+        } else if (path === '/add-text') {
+          title.textContent = 'Add Text to GIF - Add Captions and Text to GIFs Online | EasyGIFMaker';
+          metaDescription.setAttribute('content', 'Add text and captions to GIFs online for free. Create memes, add watermarks, and customize your GIFs with text overlays.');
+          ogUrl.setAttribute('content', 'https://easygifmaker.com/add-text');
+          ogTitle.setAttribute('content', 'Add Text to GIF - Add Captions and Text to GIFs Online | EasyGIFMaker');
+          ogDescription.setAttribute('content', 'Add text and captions to GIFs online for free. Create memes, add watermarks, and customize your GIFs with text overlays.');
+          twitterTitle.setAttribute('content', 'Add Text to GIF - Add Captions and Text to GIFs Online | EasyGIFMaker');
+          twitterDescription.setAttribute('content', 'Add text and captions to GIFs online for free. Create memes, add watermarks, and customize your GIFs with text overlays.');
+        }
+      })();
+    </script>
+    
+    <!-- Mobile Performance Optimizations -->
+    <link rel="preload" href="/api/health" as="fetch" crossorigin>
+    <link rel="dns-prefetch" href="//fonts.googleapis.com">
+    <link rel="dns-prefetch" href="//cdn.jsdelivr.net">
+    <meta name="theme-color" content="#3b82f6">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    
+    <!-- Critical Resource Preloading -->
+    <link rel="preload" href="data:text/jsx;base64,aW1wb3J0IHsgU3RyaWN0TW9kZSB9IGZyb20gJ3JlYWN0JwppbXBvcnQgeyBjcmVhdGVSb290IH0gZnJvbSAncmVhY3QtZG9tL2NsaWVudCcKaW1wb3J0ICcuL2luZGV4LmNzcycKaW1wb3J0IEFwcCBmcm9tICcuL0FwcC5qc3gnCgpjcmVhdGVSb290KGRvY3VtZW50LmdldEVsZW1lbnRCeUlkKCdyb290JykpLnJlbmRlcigKICA8U3RyaWN0TW9kZT4KICAgIDxBcHAgLz4KICA8L1N0cmljdE1vZGU+LAopCgo=" as="script" type="module">
+    <link rel="preload" href="/og-image.png" as="image">
+    <link rel="preload" href="/favicon.svg" as="image">
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://easygifmaker.com/" />
+    <meta property="og:title" content="EasyGIFMaker - Create and Edit GIFs Online" />
+    <meta property="og:description" content="Create, edit, and optimize GIFs online for free. Convert videos to GIFs, resize, crop, add text, and more." />
+    <meta property="og:image" content="https://easygifmaker.com/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:site_name" content="EasyGIFMaker" />
+    
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="EasyGIFMaker - Create and Edit GIFs Online" />
+    <meta name="twitter:description" content="Create, edit, and optimize GIFs online for free. Convert videos to GIFs, resize, crop, add text, and more." />
+    <meta name="twitter:image" content="https://easygifmaker.com/og-image.png" />
+    
+    <!-- SEO -->
+    <meta name="robots" content="index, follow" />
+    <meta name="author" content="EasyGIFMaker" />
+    
+    <!-- Preconnect for performance -->
+    <link rel="preconnect" href="https://www.googletagmanager.com" />
+    <link rel="preconnect" href="https://pagead2.googlesyndication.com" />
+    <link rel="preconnect" href="https://googleads.g.doubleclick.net" />
+    <script type="module" crossorigin src="/assets/index-BgdVocwn.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/react-vendor-BsLtzIyS.js">
+    <link rel="modulepreload" crossorigin href="/assets/utils-vendor-D-jntlEd.js">
+    <link rel="modulepreload" crossorigin href="/assets/ui-vendor-BFUjoqbW.js">
+    <link rel="stylesheet" crossorigin href="/assets/index-So7neIfh.css">
+  </head>
+  <body>
+    <div id="root"></div>
+    
+    <!-- Google Analytics and AdSense - Loaded after page content -->
+    <script async defer src="https://www.googletagmanager.com/gtag/js?id=G-4184BKX5QY"></script>
+    <script defer>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-4184BKX5QY');
+    </script>
+  <!-- AdSense loads via the SPA with consent; no direct script tag here to avoid duplicates. -->
+  </body>
+</html>

@@ -1,0 +1,8 @@
+# robots.txt for easygifmaker
+
+User-agent: *
+Disallow: /admin/
+Disallow: /private/
+Allow: /
+
+Sitemap: https://easygifmaker.com/sitemap.xml

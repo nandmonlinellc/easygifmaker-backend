@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1200" height="630" viewBox="0 0 1200 630" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="630" fill="#2563eb"/>
+  <g>
+    <text x="50%" y="40%" text-anchor="middle" fill="#fff" font-size="80" font-family="Arial, Helvetica, sans-serif" font-weight="bold">EasyGIFMaker</text>
+    <text x="50%" y="55%" text-anchor="middle" fill="#fff" font-size="36" font-family="Arial, Helvetica, sans-serif">Create & Edit GIFs Online</text>
+    <rect x="400" y="400" width="400" height="100" rx="20" fill="#fff" fill-opacity="0.1"/>
+    <text x="50%" y="470" text-anchor="middle" fill="#fff" font-size="32" font-family="Arial, Helvetica, sans-serif">Fast • Free • Privacy-Focused</text>
+  </g>
+  <g>
+    <rect x="60" y="520" width="1080" height="60" rx="30" fill="#fff" fill-opacity="0.05"/>
+    <text x="50%" y="560" text-anchor="middle" fill="#fff" font-size="24" font-family="Arial, Helvetica, sans-serif">GIF Maker • Video to GIF • Crop • Resize • Optimize • Add Text</text>
+  </g>
+</svg>

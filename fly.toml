@@ -1,0 +1,28 @@
+# Optimized fly.toml for Flask + Celery App on Fly.io
+
+app = 'easygifmaker-api'
+primary_region = 'fra'
+
+[build]
+# Optionally specify build options here
+
+[env]
+  UPLOAD_FOLDER = "/data/uploads"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+  # Only one process group, handled by start.sh (web + worker in one container)
+  # Remove 'processes' to avoid Fly.io splitting into multiple machines
+
+[[vm]]
+  memory = "2gb" # 2048 MB (max for shared-cpu-1x)
+  cpu_kind = "shared"
+  cpus = 1
+
+[mounts]
+  source = "easygifmaker_data"
+  destination = "/data"

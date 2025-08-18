@@ -1,0 +1,195 @@
+openapi: 3.0.1
+info:
+  title: EasyGIFMaker API
+  description: API for converting, editing, and optimizing GIFs from videos or images.
+  version: 1.0.0
+servers:
+  - url: https://easygifmaker-api.fly.dev
+
+paths:
+  /api/ai/convert:
+    post:
+      summary: Convert video to GIF
+      operationId: convertVideo
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                url:
+                  type: string
+                base64_data:
+                  type: string
+                fps:
+                  type: integer
+                quality:
+                  type: string
+                max_width:
+                  type: integer
+                max_height:
+                  type: integer
+                start_time:
+                  type: integer
+                duration:
+                  type: integer
+      responses:
+        '200':
+          description: Task started
+  /api/ai/create-gif:
+    post:
+      summary: Create GIF from images
+      operationId: createFromImages
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                urls:
+                  type: array
+                  items:
+                    type: string
+                fps:
+                  type: integer
+                quality:
+                  type: string
+                loop:
+                  type: boolean
+      responses:
+        '200':
+          description: Task started
+  /api/ai/optimize:
+    post:
+      summary: Optimize GIF file size
+      operationId: optimizeGif
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                url:
+                  type: string
+                target_size_mb:
+                  type: integer
+                quality:
+                  type: string
+      responses:
+        '200':
+          description: Task started
+  /api/ai/add-text:
+    post:
+      summary: Add text overlay to GIF (multi-layer)
+      operationId: addTextToGif
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                url:
+                  type: string
+                  description: Direct URL to a GIF file
+                base64_data:
+                  type: string
+                  description: Base64-encoded GIF data (data URL supported)
+                layers:
+                  type: array
+                  description: Array of text layers to render (recommended)
+                  items:
+                    type: object
+                    properties:
+                      text:
+                        type: string
+                      font_family:
+                        type: string
+                      font_size:
+                        type: integer
+                      color:
+                        type: string
+                        description: Hex color string, e.g. #ffffff
+                      stroke_color:
+                        type: string
+                      stroke_width:
+                        type: integer
+                      horizontal_align:
+                        type: string
+                        enum: [left, center, right]
+                      vertical_align:
+                        type: string
+                        enum: [top, middle, bottom]
+                      offset_x:
+                        type: integer
+                      offset_y:
+                        type: integer
+                      start_time:
+                        type: number
+                      end_time:
+                        type: number
+                      animation_style:
+                        type: string
+                        enum: [none, fade, slide_up]
+                      max_width_ratio:
+                        type: number
+                        example: 0.95
+                      line_height:
+                        type: number
+                        example: 1.2
+                      auto_fit:
+                        type: boolean
+                      font_url:
+                        type: string
+                        description: Optional remote font file URL (.ttf/.otf)
+                # Legacy single-layer fields for backward compatibility
+                text:
+                  type: string
+                font_color:
+                  type: string
+                font_size:
+                  type: integer
+                horizontal_align:
+                  type: string
+                vertical_align:
+                  type: string
+                x_offset:
+                  type: integer
+                y_offset:
+                  type: integer
+                start_time:
+                  type: number
+                end_time:
+                  type: number
+                animation_style:
+                  type: string
+      responses:
+        '200':
+          description: Task started
+  /api/ai/status/{task_id}:
+    get:
+      summary: Check task status
+      parameters:
+        - in: path
+          name: task_id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Task status
+  /api/ai/download/{task_id}:
+    get:
+      summary: Download result file
+      parameters:
+        - in: path
+          name: task_id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Binary GIF file

@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ page.title }}</title>
+    <meta name="description" content="{{ page.description }}">
+    <meta name="keywords" content="{{ page.keywords }}">
+    <link rel="canonical" href="https://easygifmaker.com/{{ page.category }}/{{ page.slug }}">
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://easygifmaker.com/{{ page.category }}/{{ page.slug }}">
+    <meta property="og:title" content="{{ page.title }}">
+    <meta property="og:description" content="{{ page.description }}">
+    <meta property="og:image" content="https://easygifmaker.com/og-image.png">
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" content="https://easygifmaker.com/{{ page.category }}/{{ page.slug }}">
+    <meta property="twitter:title" content="{{ page.title }}">
+    <meta property="twitter:description" content="{{ page.description }}">
+    <meta property="twitter:image" content="https://easygifmaker.com/og-image.png">
+
+    <!-- Schema.org structured data -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "WebPage",
+        "name": "{{ page.title }}",
+        "description": "{{ page.description }}",
+        "url": "https://easygifmaker.com/{{ page.category }}/{{ page.slug }}",
+        "mainEntity": {
+            "@type": "WebApplication",
+            "name": "EasyGIFMaker",
+            "description": "{{ page.description }}",
+            "url": "https://easygifmaker.com",
+            "applicationCategory": "MultimediaApplication",
+            "operatingSystem": "Web Browser"
+        }
+    }
+    </script>
+
+    <!-- FAQ Schema -->
+    {% if page.faqs %}
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": [
+            {% for faq in page.faqs %}
+            {
+                "@type": "Question",
+                "name": "{{ faq.question }}",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "{{ faq.answer }}"
+                }
+            }{% if not loop.last %},{% endif %}
+            {% endfor %}
+        ]
+    }
+    </script>
+    {% endif %}
+
+    <!-- HowTo Schema -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "HowTo",
+        "name": "{{ page.h1 }}",
+        "description": "{{ page.description }}",
+        "step": [
+            {
+                "@type": "HowToStep",
+                "name": "Upload your file",
+                "text": "Upload your video or GIF file to our online tool"
+            },
+            {
+                "@type": "HowToStep", 
+                "name": "Adjust settings",
+                "text": "Choose your preferred settings and options"
+            },
+            {
+                "@type": "HowToStep",
+                "name": "Download result",
+                "text": "Download your converted or edited GIF instantly"
+            }
+        ]
+    }
+    </script>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: #f8f9fa;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+        
+        header {
+            background: white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            padding: 1rem 0;
+        }
+        
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .logo {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #2563eb;
+            text-decoration: none;
+        }
+        
+        .cta-button {
+            background: #2563eb;
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            text-decoration: none;
+            font-weight: 500;
+            transition: background 0.3s;
+        }
+        
+        .cta-button:hover {
+            background: #1d4ed8;
+        }
+        
+        main {
+            padding: 2rem 0;
+        }
+        
+        .hero {
+            background: white;
+            border-radius: 1rem;
+            padding: 3rem 2rem;
+            text-align: center;
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+            color: #1f2937;
+        }
+        
+        .hero p {
+            font-size: 1.2rem;
+            color: #6b7280;
+            margin-bottom: 2rem;
+        }
+        
+        .content-section {
+            background: white;
+            border-radius: 1rem;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        h2 {
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+            color: #1f2937;
+        }
+        
+        .content-section p {
+            margin-bottom: 1rem;
+            color: #4b5563;
+        }
+        
+        .faq-section {
+            background: white;
+            border-radius: 1rem;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .faq-item {
+            margin-bottom: 1.5rem;
+            padding-bottom: 1.5rem;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        
+        .faq-item:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+        
+        .faq-question {
+            font-weight: 600;
+            color: #1f2937;
+            margin-bottom: 0.5rem;
+        }
+        
+        .faq-answer {
+            color: #6b7280;
+        }
+        
+        .related-tools {
+            background: white;
+            border-radius: 1rem;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .tools-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+        
+        .tool-card {
+            background: #f8f9fa;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            text-decoration: none;
+            color: inherit;
+            transition: transform 0.2s;
+        }
+        
+        .tool-card:hover {
+            transform: translateY(-2px);
+        }
+        
+        .tool-card h3 {
+            color: #2563eb;
+            margin-bottom: 0.5rem;
+        }
+        
+        .tool-card p {
+            color: #6b7280;
+            font-size: 0.9rem;
+        }
+        
+        footer {
+            background: #1f2937;
+            color: white;
+            padding: 2rem 0;
+            margin-top: 3rem;
+        }
+        
+        .footer-content {
+            text-align: center;
+        }
+        
+        .footer-links {
+            margin-top: 1rem;
+        }
+        
+        .footer-links a {
+            color: #9ca3af;
+            text-decoration: none;
+            margin: 0 1rem;
+        }
+        
+        .footer-links a:hover {
+            color: white;
+        }
+        
+        .cta-section {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 1rem;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            color: white;
+        }
+        
+        .cta-buttons {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1.5rem;
+            flex-wrap: wrap;
+        }
+        
+        .cta-button.secondary {
+            background: transparent;
+            border: 2px solid white;
+            color: white;
+        }
+        
+        .cta-button.secondary:hover {
+            background: white;
+            color: #667eea;
+        }
+        
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 2rem;
+            }
+            
+            .hero {
+                padding: 2rem 1rem;
+            }
+            
+            .content-section, .faq-section, .related-tools {
+                padding: 1.5rem;
+            }
+            
+            .tools-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <div class="header-content">
+                <a href="/" class="logo">EasyGIFMaker</a>
+                <a href="/video-to-gif" class="cta-button">Try GIF Tool</a>
+            </div>
+        </div>
+    </header>
+
+    <main class="container">
+        <section class="hero">
+            <h1>{{ page.h1 }}</h1>
+            <p>{{ page.description }}</p>
+            <a href="/video-to-gif" class="cta-button">Start Converting Now</a>
+        </section>
+
+        {% for section in page.content_sections %}
+        <section class="content-section">
+            <h2>{{ section.title }}</h2>
+            <p>{{ section.content }}</p>
+        </section>
+        {% endfor %}
+
+        {% if page.faqs %}
+        <section class="faq-section">
+            <h2>Frequently Asked Questions</h2>
+            {% for faq in page.faqs %}
+            <div class="faq-item">
+                <div class="faq-question">{{ faq.question }}</div>
+                <div class="faq-answer">{{ faq.answer }}</div>
+            </div>
+            {% endfor %}
+        </section>
+        {% endif %}
+
+        {% if related_pages %}
+        <section class="related-tools">
+            <h2>Related Tools</h2>
+            <div class="tools-grid">
+                {% for related_page in related_pages %}
+                <a href="/{{ related_page.category }}/{{ related_page.slug }}" class="tool-card">
+                    <h3>{{ related_page.title }}</h3>
+                    <p>{{ related_page.description }}</p>
+                </a>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
+        
+        <section class="cta-section">
+            <div class="content-section">
+                <h2>Ready to Create Your GIF?</h2>
+                <p>Try our powerful online tools to convert, edit, and optimize your GIFs. No registration required, completely free!</p>
+                <div class="cta-buttons">
+                    <a href="/{{ page.category }}/{{ page.slug }}" class="cta-button">{{ page.h1 }}</a>
+                    <a href="/gif-maker" class="cta-button secondary">Create GIF</a>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <div class="footer-content">
+                <p>&copy; 2024 EasyGIFMaker. All rights reserved.</p>
+                <div class="footer-links">
+                    <a href="/about">About</a>
+                    <a href="/privacy">Privacy Policy</a>
+                    <a href="/terms">Terms of Service</a>
+                    <a href="/contact">Contact</a>
+                </div>
+            </div>
+        </div>
+    </footer>
+</body>
+</html> 

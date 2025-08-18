@@ -1,0 +1,18 @@
+{
+  "schema_version": "v1",
+  "name_for_human": "EasyGIFMaker",
+  "name_for_model": "easygifmaker",
+  "description_for_human": "Convert videos, images, and GIFs using EasyGIFMaker API.",
+  "description_for_model": "A tool for creating, optimizing, and editing GIFs from videos or images. Supports URL, base64, or file upload. Outputs downloadable GIFs.",
+  "auth": {
+    "type": "none"
+  },
+  "api": {
+    "type": "openapi",
+    "url": "https://easygifmaker-api.fly.dev/openapi.yaml",
+    "is_user_authenticated": false
+  },
+  "logo_url": "https://easygifmaker.com/assets/logo.png",
+  "contact_email": "support@easygifmaker.com",
+  "legal_info_url": "https://easygifmaker.com/privacy-policy"
+}

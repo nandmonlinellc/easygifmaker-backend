@@ -1,0 +1,48 @@
+#!/bin/bash
+set -euo pipefail
+
+# In the container, the app code is under /app (see Dockerfile WORKDIR)
+APP_DIR="/app"
+cd "$APP_DIR"
+
+# Optional: activate venv if present (local dev). In container, deps are system-wide.
+if [ -f "venv/bin/activate" ]; then
+	echo "[Entrypoint] Activating venv..."
+	. venv/bin/activate
+fi
+
+# Ensure Python can import the 'src' package
+export PYTHONPATH="$APP_DIR"
+
+echo "[Entrypoint] Env snapshot:"
+echo "  FLASK_ENV=${FLASK_ENV:-}"
+echo "  PORT=${PORT:-8080}"
+echo "  REDIS_URL=${REDIS_URL:-}"
+
+# If REDIS_URL is set but CELERY_* are not, set them to REDIS_URL
+if [ -n "${REDIS_URL:-}" ]; then
+	if [ -z "${CELERY_BROKER_URL:-}" ]; then
+		export CELERY_BROKER_URL="$REDIS_URL"
+	fi
+	if [ -z "${CELERY_RESULT_BACKEND:-}" ]; then
+		export CELERY_RESULT_BACKEND="$REDIS_URL"
+	fi
+fi
+echo "  CELERY_BROKER_URL=${CELERY_BROKER_URL:-}"
+echo "  CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND:-}"
+
+PORT_TO_BIND=${PORT:-8080}
+echo "[Entrypoint] Starting Gunicorn (web server) on 0.0.0.0:${PORT_TO_BIND} in background..."
+gunicorn -b 0.0.0.0:${PORT_TO_BIND} src.main:app &
+
+sleep 2
+echo "[Entrypoint] Starting Celery worker (background task processor)..."
+# Concurrency = 1 to match 1 shared CPU; memory cap ~700MB per child; recycle after 10 tasks
+celery -A src.celery_app.celery worker \
+	--loglevel=INFO \
+	--concurrency=1 \
+	--max-memory-per-child=700000 \
+	--max-tasks-per-child=10 \
+	--time-limit=1200 \
+	--soft-time-limit=900 \
+	-Ofair
