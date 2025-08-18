@@ -137,14 +137,14 @@ def orchestrate_gif_from_urls_task(self, urls, frame_duration, loop_count, base_
         for url in urls:
             if url.strip():
                 # Pass the shared_download_dir to each download task
-                download_tasks.append(download_file_from_url_task.s(url, shared_download_dir, max_content_length))
+                download_tasks.append(download_file_from_url_task.s(url, shared_download_dir, max_content_length).set(queue='fileops'))
         
         if not download_tasks:
             raise ValueError("No valid URLs provided.")
         
         # Use a chord: download all, then create GIF from results
         # Pass shared_download_dir to create_gif_from_images_task as the directory where inputs are
-        callback = create_gif_from_images_task.s(frame_duration=frame_duration, loop_count=loop_count, output_dir=shared_download_dir, upload_folder=upload_folder, quality_level=quality_level)
+        callback = create_gif_from_images_task.s(frame_duration=frame_duration, loop_count=loop_count, output_dir=shared_download_dir, upload_folder=upload_folder, quality_level=quality_level).set(queue='fileops')
         job = chord(download_tasks)(callback)
         logging.info(f"Started chord for downloads and gif creation. Chord id: {job.id}")
         return job.id
@@ -279,7 +279,14 @@ def create_gif_from_images_task(self, image_paths, frame_duration=None, loop_cou
         settings = quality_settings.get(quality_level, quality_settings["high"])
 
         for idx, path in enumerate(image_paths):
-            if not os.path.exists(path):
+            exists = os.path.exists(path)
+            if not exists:
+                for _ in range(5):
+                    time.sleep(0.1)
+                    if os.path.exists(path):
+                        exists = True
+                        break
+            if not exists:
                 logging.error(f"File does not exist: {path}")
                 continue
 

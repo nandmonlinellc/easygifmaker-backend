@@ -39,10 +39,11 @@ sleep 2
 echo "[Entrypoint] Starting Celery worker (background task processor)..."
 # Concurrency = 1 to match 1 shared CPU; memory cap ~700MB per child; recycle after 10 tasks
 celery -A src.celery_app.celery worker \
-	--loglevel=INFO \
-	--concurrency=1 \
-	--max-memory-per-child=700000 \
-	--max-tasks-per-child=10 \
-	--time-limit=1200 \
-	--soft-time-limit=900 \
-	-Ofair
+    --loglevel=INFO \
+    --concurrency=1 \
+    --max-memory-per-child=700000 \
+    --max-tasks-per-child=10 \
+    --time-limit=1200 \
+    --soft-time-limit=900 \
+    -Ofair \
+    -Q fileops,default
