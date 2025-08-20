@@ -20,7 +20,33 @@ from src.utils.url_validation import validate_remote_url
 
 from src.main import limiter
 
-from src.tasks import convert_video_to_gif_task, create_gif_from_images_task, resize_gif_task, crop_gif_task, optimize_gif_task, add_text_to_gif_task, add_text_layers_to_gif_task, handle_upload_task, orchestrate_gif_from_urls_task, download_file_from_url_task_helper, reverse_gif_task
+
+
+from src.tasks import (
+    convert_video_to_gif_task,
+    create_gif_from_images_task,
+    resize_gif_task,
+    crop_gif_task,
+    optimize_gif_task,
+    add_text_to_gif_task,
+    add_text_layers_to_gif_task,
+    handle_upload_task,
+    orchestrate_gif_from_urls_task,
+    download_file_from_url_task_helper,
+)
+
+from src.utils.gif_helpers import (
+    resolve_input_gif,
+    probe_gif,
+    extract_layers,
+    prepare_layers,
+    dispatch_add_text_layers_task,
+    allowed_file,
+    ALLOWED_IMAGE_EXTENSIONS,
+    ALLOWED_VIDEO_EXTENSIONS,
+    create_session_dir,
+    resolve_video_input,
+)
 
 
 gif_bp = Blueprint("gif", __name__)
@@ -50,118 +76,20 @@ def ai_add_text_layers():
         temp_dir = tempfile.mkdtemp(dir=current_app.config.get('UPLOAD_FOLDER'))
         upload_folder = current_app.config['UPLOAD_FOLDER']
 
-        # Resolve input GIF
-        gif_path_for_probe = None
-        # URL input
-        if data.get('url'):
-            url = validate_remote_url(data['url'])
-            gif_temp_path = os.path.join(temp_dir, "temp_gif.gif")
-            try:
-                with requests.get(url, stream=True, timeout=30) as r:
-                    r.raise_for_status()
-                    with open(gif_temp_path, 'wb') as f:
-                        for chunk in r.iter_content(chunk_size=8192):
-                            f.write(chunk)
-                gif_path_for_probe = gif_temp_path
-            except Exception as e:
-                logging.error(f"/ai/add-text: Failed to download URL: {e}")
-                return jsonify({"error": "Failed to download GIF from URL"}), 400
-        # base64 input
-        elif data.get('base64_data'):
-            try:
-                import base64
-                raw = data['base64_data']
-                # Support data URLs
-                if raw.startswith('data:'):
-                    raw = raw.split(',', 1)[1]
-                binary = base64.b64decode(raw)
-                gif_temp_path = os.path.join(temp_dir, f"b64_{uuid.uuid4().hex}.gif")
-                with open(gif_temp_path, 'wb') as f:
-                    f.write(binary)
-                gif_path_for_probe = gif_temp_path
-            except Exception as e:
-                logging.error(f"/ai/add-text: Invalid base64_data: {e}")
-                return jsonify({"error": "Invalid base64_data for GIF"}), 400
-        else:
-            return jsonify({"error": "Provide either 'url' or 'base64_data'"}), 400
 
-        # Probe GIF for fps/n_frames
-        with Image.open(gif_path_for_probe) as gif_probe:
-            n_frames = getattr(gif_probe, "n_frames", 1)
-            duration_ms = gif_probe.info.get("duration", 100)
-        fps = 1000.0 / duration_ms if duration_ms > 0 else 10
+        try:
+            gif_path = resolve_input_gif(url=data.get('url'), base64_data=data.get('base64_data'), temp_dir=temp_dir)
+        except ValueError as ve:
+            return jsonify({"error": str(ve)}), 400
 
-        # Parse layers (or fallback to legacy fields)
-        import json
-        layers = data.get('layers')
-        if not layers:
-            # Legacy support: single-layer fields
-            layers = [{
-                'text': data.get('text', ''),
-                'font_family': data.get('font_family') or data.get('font') or 'Arial',
-                'font_size': int(data.get('font_size', 24)),
-                'color': data.get('color') or data.get('font_color', '#ffffff'),
-                'stroke_color': data.get('stroke_color', '#000000'),
-                'stroke_width': int(data.get('stroke_width', data.get('outline_width', 0))),
-                # Map simple position if provided
-                'horizontal_align': data.get('horizontal_align') or ('center' if data.get('position') is None else ('left' if data.get('position') == 'top-left' else ('center' if 'center' in str(data.get('position')) else 'right'))),
-                'vertical_align': data.get('vertical_align') or ('middle' if data.get('position') is None else ('top' if 'top' in str(data.get('position')) else ('bottom' if 'bottom' in str(data.get('position')) else 'middle'))),
-                'offset_x': int(data.get('x_offset', data.get('offset_x', 0)) or 0),
-                'offset_y': int(data.get('y_offset', data.get('offset_y', 0)) or 0),
-                'start_time': float(data.get('start_time', 0) or 0),
-                'end_time': data.get('end_time', None),
-                'animation_style': data.get('animation_style', 'none'),
-                'max_width_ratio': float(data.get('max_width_ratio', 0.95)),
-                'line_height': float(data.get('line_height', 1.2)),
-                'auto_fit': bool(data.get('auto_fit', True)),
-            }]
-
-        prepared_layers = []
-        # Optional: allow remote font_url per layer
-        for idx, l in enumerate(layers):
-            start_time = float(l.get('start_time', 0) or 0)
-            end_time_val = l.get('end_time', None)
-            if end_time_val not in (None, ''):
-                end_frame = int(round(float(end_time_val) * fps))
-            else:
-                end_frame = n_frames - 1
-            start_frame = int(round(start_time * fps))
-            entry = {
-                'text': l.get('text', ''),
-                'font_family': l.get('font_family', 'Arial'),
-                'font_size': int(l.get('font_size', 24)),
-                'color': l.get('color', '#ffffff'),
-                'stroke_color': l.get('stroke_color', '#000000'),
-                'stroke_width': int(l.get('stroke_width', 0)),
-                'horizontal_align': l.get('horizontal_align', 'center'),
-                'vertical_align': l.get('vertical_align', 'middle'),
-                'offset_x': int(l.get('offset_x', 0)),
-                'offset_y': int(l.get('offset_y', 0)),
-                'start_frame': start_frame,
-                'end_frame': end_frame,
-                'animation_style': l.get('animation_style', 'none'),
-                'max_width_ratio': float(l.get('max_width_ratio', 0.95)),
-                'line_height': float(l.get('line_height', 1.2)),
-                'auto_fit': bool(l.get('auto_fit', True)),
-            }
-            font_url = l.get('font_url')
-            if font_url:
-                try:
-                    font_url = validate_remote_url(font_url)
-                    with requests.get(font_url, stream=True, timeout=20) as r:
-                        r.raise_for_status()
-                        fname = f"font_{idx}_{uuid.uuid4().hex}.ttf"
-                        font_path = os.path.join(temp_dir, secure_filename(fname))
-                        with open(font_path, 'wb') as f:
-                            for chunk in r.iter_content(chunk_size=8192):
-                                f.write(chunk)
-                        entry['font_path'] = font_path
-                except Exception as fe:
-                    logging.warning(f"/ai/add-text: Failed to fetch font_url for layer {idx}: {fe}")
-            prepared_layers.append(entry)
-
-        # Dispatch task
-        task = add_text_layers_to_gif_task.apply_async([gif_path_for_probe, prepared_layers, temp_dir, upload_folder], queue="fileops")
+        try:
+            n_frames, fps = probe_gif(gif_path)
+        except Exception as e:
+            logging.error(f"/ai/add-text: Invalid GIF: {e}")
+            return jsonify({"error": "Invalid GIF provided"}), 400
+        layers = extract_layers(data)
+        prepared_layers = prepare_layers(layers, fps, n_frames, temp_dir)
+        task = dispatch_add_text_layers_task(gif_path, prepared_layers, temp_dir, upload_folder)
         logging.info(f"/ai/add-text returning task id: {task.id}")
         return jsonify({"task_id": task.id}), 202
     except Exception as e:
@@ -208,12 +136,6 @@ def gif_metadata():
         return jsonify({"error": "Could not extract GIF metadata."}), 500
 
 # Allowed file extensions
-ALLOWED_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "bmp", "webp", "apng", "heic", "heif", "mng", "jp2", "avif", "jxl", "pdf"}
-ALLOWED_VIDEO_EXTENSIONS = {"mp4", "avi", "mov", "webm", "mkv", "flv"}
-
-def allowed_file(filename, allowed_extensions):
-    return "." in filename and \
-           filename.rsplit(".", 1)[1].lower() in allowed_extensions
 
 def get_aspect_ratio_dimensions(width, height, aspect_ratio):
     """Calculate crop dimensions based on aspect ratio"""
@@ -274,13 +196,8 @@ def create_gif_from_images():
         urls = request.form.getlist("urls")
         
 
-        # Use a persistent, predictable subfolder for uploads
         upload_folder = current_app.config['UPLOAD_FOLDER']
-        user_uploads_dir = os.path.join(upload_folder, "user_uploads")
-        os.makedirs(user_uploads_dir, exist_ok=True)
-        # Use a UUID for each upload session
-        session_dir = os.path.join(user_uploads_dir, str(uuid.uuid4()))
-        os.makedirs(session_dir, exist_ok=True)
+        session_dir = create_session_dir(upload_folder)
         logging.info(f"Created temporary directory for upload: {session_dir}")
         images = []
 
@@ -360,10 +277,7 @@ def convert_video_to_gif():
     """Convert video to GIF (optionally with audio as .mp4 for direct video links only)"""
     try:
         upload_folder = current_app.config['UPLOAD_FOLDER']
-        user_uploads_dir = os.path.join(upload_folder, "user_uploads")
-        os.makedirs(user_uploads_dir, exist_ok=True)
-        session_dir = os.path.join(user_uploads_dir, str(uuid.uuid4()))
-        os.makedirs(session_dir, exist_ok=True)
+        session_dir = create_session_dir(upload_folder)
         logging.info(f"Created session directory for video upload: {session_dir}")
 
         try:
@@ -372,36 +286,13 @@ def convert_video_to_gif():
             logging.error(f"Error reading form data: {e}")
             return jsonify({"error": "Failed to read form data. The upload may be too large or incomplete. Please try a smaller file or check your connection."}), 413
 
-        if url:
-            if any(domain in url for domain in ["youtube.com", "youtu.be", "dailymotion.com", "facebook.com", "tiktok.com", "twitter.com"]):
-                return jsonify({"error": "For copyright and security reasons, we do not support YouTube, Facebook, TikTok, Twitter, or similar links. Please upload a video file or provide a direct video file URL (ending in .mp4, .webm, etc.)."}), 400
-            max_content_length = current_app.config['MAX_CONTENT_LENGTH']
-            try:
-                video_path = download_file_from_url_task_helper(url, session_dir, max_content_length)
-            except Exception as e:
-                return jsonify({"error": str(e)}), 400
-        else:
-            # Handle file upload
-            if "file" not in request.files:
-                return jsonify({"error": "No file provided"}), 400
-            file = request.files["file"]
-            if file.filename == "" or not allowed_file(file.filename, ALLOWED_VIDEO_EXTENSIONS):
-                return jsonify({"error": "Invalid video file"}), 400
-            try:
-                file.save(os.path.join(session_dir, secure_filename(file.filename)))
-            except Exception as e:
-                logging.error(f"Error saving uploaded file: {e}")
-                return jsonify({"error": "Failed to save uploaded video. The file may be too large or the upload was interrupted. Please try a smaller file or check your connection."}), 413
-            video_path = os.path.join(session_dir, secure_filename(file.filename))
-            # Verify file was saved
-            if not os.path.exists(video_path) or os.path.getsize(video_path) == 0:
-                logging.error(f"Failed to save uploaded video file or file is empty: {video_path}")
-                if not os.listdir(session_dir):
-                    shutil.rmtree(session_dir, ignore_errors=True)
-                return jsonify({"error": f"Failed to save uploaded video: {file.filename}. Please try again."}), 500
-            logging.info(f"Successfully saved uploaded video: {video_path} (size: {os.path.getsize(video_path)} bytes)")
+        file = request.files.get("file")
+        max_content_length = current_app.config['MAX_CONTENT_LENGTH']
+        try:
+            video_path = resolve_video_input(url, file, session_dir, ALLOWED_VIDEO_EXTENSIONS, max_content_length)
+        except ValueError as ve:
+            return jsonify({"error": str(ve)}), 400
 
-        # Get parameters
         start_time = float(request.form.get("start_time", 0))
         duration = float(request.form.get("duration", 10))
         fps = int(request.form.get("fps", 10))
@@ -410,7 +301,6 @@ def convert_video_to_gif():
         include_audio = request.form.get("include_audio", "false").lower() == "true"
 
         logging.debug(f"[video-to-gif] video_path={video_path}, start_time={start_time}, duration={duration}, fps={fps}, width={width}, height={height}, session_dir={session_dir}, upload_folder={upload_folder}, include_audio={include_audio}")
-        # Pass include_audio to the Celery task
         task = convert_video_to_gif_task.apply_async([video_path, start_time, duration, fps, width, height, session_dir, upload_folder, include_audio], queue="fileops")
         logging.info(f"/video-to-gif returning task id: {task.id}")
         return jsonify({"task_id": task.id}), 202
@@ -736,108 +626,36 @@ def add_text_layers_to_gif():
     """Add multiple text layers to a GIF with per-layer customization and optional custom fonts."""
     try:
         url = request.form.get("url")
+        file = request.files.get("file")
         temp_dir = tempfile.mkdtemp(dir=current_app.config.get('UPLOAD_FOLDER'))
         try:
-            # Probe GIF to obtain fps and n_frames from either URL or file
-            if url:
-                url = validate_remote_url(url)
-                gif_temp_path = os.path.join(temp_dir, "temp_gif.gif")
-                with requests.get(url, stream=True) as r:
-                    r.raise_for_status()
-                    with open(gif_temp_path, 'wb') as f:
-                        for chunk in r.iter_content(chunk_size=8192):
-                            f.write(chunk)
-                gif_path_for_probe = gif_temp_path
-            else:
-                if "file" not in request.files:
-                    return jsonify({"error": "No file provided"}), 400
-                file = request.files["file"]
-                gif_path_for_probe = os.path.join(temp_dir, secure_filename(file.filename))
-                file.save(gif_path_for_probe)
-                try:
-                    with Image.open(gif_path_for_probe) as test_img:
-                        test_img.verify()
-                except Exception as e:
-                    logging.error(f"Uploaded file is not a valid image: {gif_path_for_probe}, error: {e}")
-                    return jsonify({"error": "Uploaded file is not a valid GIF image."}), 400
 
-            with Image.open(gif_path_for_probe) as gif_probe:
-                n_frames = getattr(gif_probe, "n_frames", 1)
-                duration_ms = gif_probe.info.get("duration", 100)
-            fps = 1000.0 / duration_ms if duration_ms > 0 else 10
+            gif_path = resolve_input_gif(url=url, file=file, temp_dir=temp_dir)
+        except ValueError as ve:
+            return jsonify({"error": str(ve)}), 400
 
-            # Parse layers JSON
-            import json
-            layers_raw = request.form.get("layers")
-            if not layers_raw:
-                return jsonify({"error": "Missing layers data"}), 400
-            try:
-                layers = json.loads(layers_raw)
-            except Exception:
-                return jsonify({"error": "Invalid layers JSON"}), 400
 
-            # Convert per-layer start/end time (seconds) to frames, attach font file fields if present
-            prepared_layers = []
-            for idx, l in enumerate(layers):
-                start_time = float(l.get('start_time', 0) or 0)
-                end_time_val = l.get('end_time', None)
-                if end_time_val not in (None, ''):
-                    end_frame = int(round(float(end_time_val) * fps))
-                else:
-                    end_frame = n_frames - 1
-                start_frame = int(round(start_time * fps))
-                entry = {
-                    'text': l.get('text', ''),
-                    'font_family': l.get('font_family', 'Arial'),
-                    'font_size': int(l.get('font_size', 24)),
-                    'color': l.get('color', '#ffffff'),
-                    'stroke_color': l.get('stroke_color', '#000000'),
-                    'stroke_width': int(l.get('stroke_width', 0)),
-                    'horizontal_align': l.get('horizontal_align', 'center'),
-                    'vertical_align': l.get('vertical_align', 'middle'),
-                    'offset_x': int(l.get('offset_x', 0)),
-                    'offset_y': int(l.get('offset_y', 0)),
-                    'start_frame': start_frame,
-                    'end_frame': end_frame,
-                    'animation_style': l.get('animation_style', 'none'),
-                    'max_width_ratio': float(l.get('max_width_ratio', 0.95)),
-                    'line_height': float(l.get('line_height', 1.2)),
-                    'auto_fit': bool(l.get('auto_fit', True)),
-                }
-                font_field = l.get('font_field')
-                if font_field and font_field in request.files:
-                    try:
-                        f = request.files[font_field]
-                        fname = secure_filename(f.filename)
-                        font_path = os.path.join(temp_dir, f"font_{idx}_{fname}")
-                        f.save(font_path)
-                        entry['font_path'] = font_path
-                    except Exception as fe:
-                        logging.warning(f"Failed to save custom font for layer {idx}: {fe}")
-                prepared_layers.append(entry)
+        try:
+            n_frames, fps = probe_gif(gif_path)
+        except Exception as e:
+            logging.error(f"Uploaded file is not a valid image: {gif_path}, error: {e}")
+            return jsonify({"error": "Uploaded file is not a valid GIF image."}), 400
 
-            # Clean up temp gif if url
-            if url and os.path.exists(gif_temp_path):
-                os.remove(gif_temp_path)
+        import json
+        layers_raw = request.form.get("layers")
+        if not layers_raw:
+            return jsonify({"error": "Missing layers data"}), 400
+        try:
+            layers = json.loads(layers_raw)
+        except Exception:
+            return jsonify({"error": "Invalid layers JSON"}), 400
 
-            upload_folder = current_app.config['UPLOAD_FOLDER']
-            if url:
-                max_content_length = current_app.config['MAX_CONTENT_LENGTH']
-                task_chain = chain(
-                    handle_upload_task.s(url, temp_dir, upload_folder, max_content_length),
-                    add_text_layers_to_gif_task.s(prepared_layers, temp_dir, upload_folder)
-                )
-                task = task_chain.apply_async([], queue="fileops")
-                logging.info(f"/add-text-layers (url) returning task id: {task.id}")
-                return jsonify({"task_id": task.id}), 202
-            else:
-                # For file upload, use saved path
-                gif_path = gif_path_for_probe
-                task = add_text_layers_to_gif_task.apply_async([gif_path, prepared_layers, temp_dir, upload_folder], queue="fileops")
-                logging.info(f"/add-text-layers (file) returning task id: {task.id}")
-                return jsonify({"task_id": task.id}), 202
-        finally:
-            pass
+        prepared_layers = prepare_layers(layers, fps, n_frames, temp_dir)
+
+        upload_folder = current_app.config['UPLOAD_FOLDER']
+        task = dispatch_add_text_layers_task(gif_path, prepared_layers, temp_dir, upload_folder)
+        logging.info(f"/add-text-layers returning task id: {task.id}")
+        return jsonify({"task_id": task.id}), 202
     except Exception as e:
         logging.error(f"Error in add_text_layers_to_gif: {e}", exc_info=True)
         return jsonify({"error": "An unexpected error occurred while adding text layers to the GIF."}), 500
