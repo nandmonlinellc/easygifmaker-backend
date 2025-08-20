@@ -16,6 +16,7 @@ from src.celery_app import celery as celery_app
 from celery.result import AsyncResult, GroupResult
 import yt_dlp # Import yt_dlp
 from PIL import Image, ImageDraw, ImageFont
+from src.utils.url_validation import validate_remote_url
 
 from src.tasks import convert_video_to_gif_task, create_gif_from_images_task, resize_gif_task, crop_gif_task, optimize_gif_task, add_text_to_gif_task, add_text_layers_to_gif_task, handle_upload_task, orchestrate_gif_from_urls_task, download_file_from_url_task_helper
 
@@ -48,9 +49,10 @@ def ai_add_text_layers():
         gif_path_for_probe = None
         # URL input
         if data.get('url'):
+            url = validate_remote_url(data['url'])
             gif_temp_path = os.path.join(temp_dir, "temp_gif.gif")
             try:
-                with requests.get(data['url'], stream=True, timeout=30) as r:
+                with requests.get(url, stream=True, timeout=30) as r:
                     r.raise_for_status()
                     with open(gif_temp_path, 'wb') as f:
                         for chunk in r.iter_content(chunk_size=8192):
@@ -140,6 +142,7 @@ def ai_add_text_layers():
             font_url = l.get('font_url')
             if font_url:
                 try:
+                    font_url = validate_remote_url(font_url)
                     with requests.get(font_url, stream=True, timeout=20) as r:
                         r.raise_for_status()
                         fname = f"font_{idx}_{uuid.uuid4().hex}.ttf"
@@ -168,6 +171,7 @@ def gif_metadata():
         duration = 0
         n_frames = 1
         if url:
+            url = validate_remote_url(url)
             temp_dir = tempfile.mkdtemp(dir=current_app.config.get('UPLOAD_FOLDER'))
             gif_path = os.path.join(temp_dir, "temp_gif.gif")
             with requests.get(url, stream=True) as r:
@@ -607,7 +611,7 @@ def add_text_to_gif():
             # We'll get frame count and duration from the GIF after upload
             if url:
                 # Download GIF to temp_dir to probe metadata
-                import requests
+                url = validate_remote_url(url)
                 gif_temp_path = os.path.join(temp_dir, "temp_gif.gif")
                 with requests.get(url, stream=True) as r:
                     r.raise_for_status()
@@ -691,6 +695,7 @@ def add_text_layers_to_gif():
         try:
             # Probe GIF to obtain fps and n_frames from either URL or file
             if url:
+                url = validate_remote_url(url)
                 gif_temp_path = os.path.join(temp_dir, "temp_gif.gif")
                 with requests.get(url, stream=True) as r:
                     r.raise_for_status()
