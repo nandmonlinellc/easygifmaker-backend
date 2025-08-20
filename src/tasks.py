@@ -173,6 +173,31 @@ def orchestrate_gif_from_urls_task(self, urls, frame_duration, loop_count, base_
 def convert_video_to_gif_task(self, video_path, start_time, duration, fps, width, height, output_dir, upload_folder, include_audio=False):
     _task_start = time.time()
     try:
+        # Check if input file exists with retry mechanism for distributed file systems
+        max_retries = 3
+        for attempt in range(max_retries):
+            if os.path.exists(video_path):
+                break
+            if attempt < max_retries - 1:
+                logging.warning(f"[convert_video_to_gif_task] Input video file not found on attempt {attempt + 1}, retrying in 1 second: {video_path}")
+                time.sleep(1)
+            else:
+                logging.error(f"[convert_video_to_gif_task] Input video file not found after {max_retries} attempts: {video_path}")
+                # List directory contents for debugging
+                dir_path = os.path.dirname(video_path)
+                if os.path.exists(dir_path):
+                    files = os.listdir(dir_path)
+                    logging.error(f"[convert_video_to_gif_task] Directory contents of {dir_path}: {files}")
+                else:
+                    logging.error(f"[convert_video_to_gif_task] Directory does not exist: {dir_path}")
+                raise Exception(f"Input video file not found: {video_path}")
+        
+        # Check file size to ensure it is not empty
+        if os.path.getsize(video_path) == 0:
+            logging.error(f"[convert_video_to_gif_task] Input video file is empty: {video_path}")
+            raise Exception(f"Input video file is empty: {video_path}")
+        
+        logging.info(f"[convert_video_to_gif_task] Processing video: {video_path} (size: {os.path.getsize(video_path)} bytes)")
         output_gif = os.path.join(output_dir, f"output_{uuid.uuid4().hex}.gif")
         cmd_gif = [
             "ffmpeg", "-i", video_path,
