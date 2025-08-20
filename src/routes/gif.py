@@ -1,5 +1,5 @@
 
-from flask import Blueprint, request, jsonify, send_file, current_app, send_from_directory
+from flask import Blueprint, request, jsonify, send_file, current_app, send_from_directory, url_for
 from flask_cors import cross_origin
 from werkzeug.utils import secure_filename
 import os
@@ -17,7 +17,7 @@ from celery.result import AsyncResult, GroupResult
 import yt_dlp # Import yt_dlp
 from PIL import Image, ImageDraw, ImageFont
 
-from src.tasks import convert_video_to_gif_task, create_gif_from_images_task, resize_gif_task, crop_gif_task, optimize_gif_task, add_text_to_gif_task, add_text_layers_to_gif_task, handle_upload_task, orchestrate_gif_from_urls_task, download_file_from_url_task_helper
+from src.tasks import convert_video_to_gif_task, create_gif_from_images_task, resize_gif_task, crop_gif_task, optimize_gif_task, add_text_to_gif_task, add_text_layers_to_gif_task, handle_upload_task, orchestrate_gif_from_urls_task, download_file_from_url_task_helper, reverse_gif_task
 
 gif_bp = Blueprint("gif", __name__)
 
@@ -575,6 +575,38 @@ def optimize_gif():
     except Exception as e:
         logging.error(f"Error in optimize_gif: {e}", exc_info=True)
         return jsonify({"error": "An unexpected error occurred while optimizing the GIF."}), 500
+
+@gif_bp.route("/reverse", methods=["POST"])
+def reverse_gif():
+    """Reverse GIF frames"""
+    try:
+        url = request.form.get("url")
+        temp_dir = tempfile.mkdtemp(dir=current_app.config.get('UPLOAD_FOLDER'))
+        try:
+            if url:
+                upload_folder = current_app.config['UPLOAD_FOLDER']
+                max_content_length = current_app.config['MAX_CONTENT_LENGTH']
+                download_task = handle_upload_task.apply(args=[url, temp_dir, upload_folder, max_content_length])
+                gif_path = download_task.get()
+            else:
+                if "file" not in request.files:
+                    return jsonify({"error": "No file provided"}), 400
+                file = request.files["file"]
+                if file.filename == "":
+                    return jsonify({"error": "No file selected"}), 400
+                gif_path = os.path.join(temp_dir, secure_filename(file.filename))
+                file.save(gif_path)
+
+            upload_folder = current_app.config['UPLOAD_FOLDER']
+            task = reverse_gif_task.apply(args=[gif_path, temp_dir, upload_folder])
+            rel = task.get()
+            download_url = url_for('gif.download_result', filename=rel, _external=True)
+            return jsonify({"download_url": download_url}), 200
+        finally:
+            pass
+    except Exception as e:
+        logging.error(f"Error in reverse_gif: {e}", exc_info=True)
+        return jsonify({"error": "An unexpected error occurred while reversing the GIF."}), 500
 
 @gif_bp.route("/add-text", methods=["POST"])
 def add_text_to_gif():
