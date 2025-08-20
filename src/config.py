@@ -1,5 +1,5 @@
 import os
-import tempfile
+from datetime import timedelta
 
 def fix_redis_ssl_url(url):
     """Add SSL cert requirements to rediss:// URLs if missing"""
@@ -17,6 +17,16 @@ class Config:
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL', 'sqlite:///app.db')
     # Use local directory for uploads in development, Fly.io Volume in production
     UPLOAD_FOLDER = os.environ.get('UPLOAD_FOLDER', os.path.join(os.getcwd(), 'uploads'))
+
+    # Temporary file cleanup settings
+    TEMP_FILE_MAX_AGE = int(os.environ.get('TEMP_FILE_MAX_AGE', 7200))  # seconds
+    TEMP_FILE_CLEANUP_INTERVAL = int(os.environ.get('TEMP_FILE_CLEANUP_INTERVAL', 3600))  # seconds
+    CELERY_BEAT_SCHEDULE = {
+        "cleanup-old-temp-files": {
+            "task": "tasks.cleanup_old_files",
+            "schedule": timedelta(seconds=TEMP_FILE_CLEANUP_INTERVAL),
+        }
+    }
     
     @classmethod
     def get_celery_broker_url(cls):
