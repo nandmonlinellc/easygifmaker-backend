@@ -32,6 +32,7 @@ from src.tasks import (
     add_text_layers_to_gif_task,
     handle_upload_task,
     orchestrate_gif_from_urls_task,
+    reverse_gif_task,
     download_file_from_url_task_helper,
 )
 
