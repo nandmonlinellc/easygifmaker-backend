@@ -20,8 +20,8 @@ def cleanup_old_files():
             logging.info(f"User uploads directory does not exist, skipping: {user_uploads_dir}")
             return
 
-        # Use a configurable max age, defaulting to 2 hours
-        max_age_seconds = current_app.config.get('TEMP_FILE_MAX_AGE', 7200)
+        # Use a configurable max age
+        max_age_seconds = current_app.config.get('TEMP_FILE_MAX_AGE')
         now = time.time()
         deleted_count = 0
         
@@ -44,4 +44,4 @@ def cleanup_old_files():
     except Exception as e:
         logging.error(f"Error in cleanup task: {e}", exc_info=True)
 
-# To schedule: Use Celery beat or a cron job to call this task regularly.
+# Scheduled via Celery beat using TEMP_FILE_CLEANUP_INTERVAL.
