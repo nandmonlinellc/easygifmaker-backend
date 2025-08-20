@@ -2,10 +2,25 @@ import os
 import sys
 import logging
 import traceback
+
+import time
+import threading
+import shutil
+from functools import wraps
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from flask import Flask, send_from_directory, render_template, make_response, redirect, request, abort
+
+from flask import Flask, send_from_directory, render_template, make_response, redirect, request, abort, jsonify
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+)
+
 from flask_cors import CORS, cross_origin
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from flask_limiter.errors import RateLimitExceeded
 from src.celery_app import celery as celery_app
 from src.models.user import db, APILog # Import APILog
 from src.models.metrics import JobMetric, DailyMetric
@@ -13,6 +28,10 @@ from src.config import DevelopmentConfig, ProductionConfig
 import requests
 import smtplib
 from email.message import EmailMessage
+
+
+limiter = Limiter(key_func=get_remote_address, default_limits=["200 per minute"])
+
 
 
 def configure_celery(app, celery_instance):
@@ -37,8 +56,13 @@ def configure_celery(app, celery_instance):
     celery_instance.conf.result_backend = fix_redis_ssl_url(backend_url)
     
     # Debug logging
-    print(f"[Flask Debug] Celery broker_url: {celery_instance.conf.broker_url}")
-    print(f"[Flask Debug] Celery result_backend: {celery_instance.conf.result_backend}")
+    logging.debug(
+        "[Flask Debug] Celery broker_url: %s", celery_instance.conf.broker_url
+    )
+    logging.debug(
+        "[Flask Debug] Celery result_backend: %s",
+        celery_instance.conf.result_backend,
+    )
     
     # Celery config is updated from Flask config. Keys like CELERY_BROKER_URL
     # are automatically mapped to broker_url. The line below was incorrect
@@ -51,6 +75,17 @@ def configure_celery(app, celery_instance):
                 return super().__call__(*args, **kwargs)
     celery_instance.Task = ContextTask
 
+def admin_required(f):
+    """Verify that the request contains a valid admin token."""
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        token = current_app.config.get('ADMIN_TOKEN')
+        auth = request.headers.get('Authorization', '')
+        if not token or not auth.startswith('Bearer ') or auth.split(' ', 1)[1] != token:
+            abort(401)
+        return f(*args, **kwargs)
+    return wrapper
+
 def create_app():
     app = Flask(__name__, 
                 static_folder=os.path.join(os.path.dirname(__file__), 'static'),
@@ -58,23 +93,28 @@ def create_app():
     
     config_class = ProductionConfig if os.environ.get('FLASK_ENV') == 'production' else DevelopmentConfig
     app.config.from_object(config_class)
+    app.config['ADMIN_TOKEN'] = os.environ.get('ADMIN_TOKEN')
 
     # Ensure the upload folder exists
     upload_folder = app.config.get('UPLOAD_FOLDER')
     if upload_folder:
         os.makedirs(upload_folder, exist_ok=True)
 
-    # Set up logging
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-    
     # Initialize extensions
     CORS(app, resources={r"/api/*": {"origins": app.config['CORS_ORIGINS']}})
     db.init_app(app)
+    app.config.setdefault("RATELIMIT_HEADERS_ENABLED", True)
+    limiter.init_app(app)
 
     # Configure Celery with the Flask app context BEFORE importing blueprints/tasks
     configure_celery(app, celery_app)
-    print(f"[Flask Debug] Celery broker_url: {celery_app.conf.broker_url}")
-    print(f"[Flask Debug] Celery result_backend: {celery_app.conf.result_backend}")
+    logging.debug(
+        "[Flask Debug] Celery broker_url: %s", celery_app.conf.broker_url
+    )
+    logging.debug(
+        "[Flask Debug] Celery result_backend: %s",
+        celery_app.conf.result_backend,
+    )
     app.celery = celery_app
 
     # Import tasks now that Celery has been configured so tasks can register safely
@@ -93,14 +133,15 @@ def create_app():
         # Create database tables if they don't exist
         db.create_all()
 
+    @app.errorhandler(RateLimitExceeded)
+    def handle_rate_limit(e):
+        return jsonify({"error": "Rate limit exceeded", "limit": str(e.description)}), 429
+
     # -------------------- Admin routes (defined BEFORE catch-all) --------------------
-    ADMIN_KEY = os.environ.get('ADMIN_KEY', 'your-secret-key')
 
     @app.route('/admin/usage')
+    @admin_required
     def view_usage():
-        # Simple key check; replace with proper auth later
-        if request.args.get('key') != ADMIN_KEY:  # IMPORTANT: Change this to a strong, secret key
-            abort(401)
         logs = APILog.query.order_by(APILog.timestamp.desc()).limit(100).all()
         html = "<h2>API Usage Log</h2><table border='1'><tr><th>Time</th><th>IP</th><th>Path</th><th>Method</th><th>User-Agent</th></tr>"
         for log in logs:
@@ -109,10 +150,8 @@ def create_app():
         return html
 
     @app.route('/admin/job-metrics')
+    @admin_required
     def view_job_metrics():
-        # Simple key check; replace with proper auth later
-        if request.args.get('key') != ADMIN_KEY:
-            abort(401)
         rows = JobMetric.query.order_by(JobMetric.created_at.desc()).limit(200).all()
         html = "<h2>Job Metrics</h2><table border='1'>"
         html += "<tr><th>Time</th><th>Tool</th><th>Status</th><th>Task ID</th><th>In WxH</th><th>Frames</th><th>In Size</th><th>Out Size</th><th>Time (ms)</th><th>Options</th><th>Error</th></tr>"
@@ -130,9 +169,8 @@ def create_app():
         return html
 
     @app.route('/admin/job-metrics/summary')
+    @admin_required
     def metrics_summary():
-        if request.args.get('key') != ADMIN_KEY:
-            abort(401)
         try:
             import datetime
             hours = int(request.args.get('hours', 24))
@@ -160,13 +198,13 @@ def create_app():
 
     # API-prefixed aliases to avoid SPA catch-all in some deployments
     @app.route('/api/admin/job-metrics/summary')
+    @admin_required
     def api_metrics_summary_alias():
         return metrics_summary()
 
     @app.route('/admin/daily-metrics/rebuild')
+    @admin_required
     def rebuild_daily_metrics():
-        if request.args.get('key') != ADMIN_KEY:
-            abort(401)
         import datetime
         start = request.args.get('start')  # YYYY-MM-DD
         end = request.args.get('end')      # YYYY-MM-DD
@@ -209,13 +247,13 @@ def create_app():
             return {'error': str(e)}, 500
 
     @app.route('/api/admin/daily-metrics/rebuild')
+    @admin_required
     def api_rebuild_daily_metrics_alias():
         return rebuild_daily_metrics()
 
     @app.route('/admin/daily-metrics')
+    @admin_required
     def list_daily_metrics():
-        if request.args.get('key') != ADMIN_KEY:
-            abort(401)
         tool = request.args.get('tool')
         q = DailyMetric.query
         if tool:
@@ -224,10 +262,12 @@ def create_app():
         return {'items': [r.to_dict() for r in rows]}
 
     @app.route('/api/admin/daily-metrics')
+    @admin_required
     def api_list_daily_metrics_alias():
         return list_daily_metrics()
 
     @app.route('/api/admin/job-metrics')
+    @admin_required
     def api_view_job_metrics_alias():
         return view_job_metrics()
     # -------------------------------------------------------------------------------
