@@ -8,22 +8,19 @@ import shutil
 from functools import wraps
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
+
+from flask import Flask, send_from_directory, current_app, render_template, make_response, redirect, request, abort, jsonify
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
 )
 
-from flask import (
-    Flask,
-    send_from_directory,
-    current_app,
-    render_template,
-    make_response,
-    redirect,
-    request,
-    abort,
-)
+
 from flask_cors import CORS, cross_origin
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from flask_limiter.errors import RateLimitExceeded
 from src.celery_app import celery as celery_app
 from src.models.user import db, APILog # Import APILog
 from src.models.metrics import JobMetric, DailyMetric
@@ -31,6 +28,9 @@ from src.config import DevelopmentConfig, ProductionConfig
 import requests
 import smtplib
 from email.message import EmailMessage
+
+
+limiter = Limiter(key_func=get_remote_address, default_limits=["200 per minute"])
 
 def clean_temp_files_task(app_context):
     """A background task that cleans up old temporary files."""
@@ -141,6 +141,8 @@ def create_app():
     # Initialize extensions
     CORS(app, resources={r"/api/*": {"origins": app.config['CORS_ORIGINS']}})
     db.init_app(app)
+    app.config.setdefault("RATELIMIT_HEADERS_ENABLED", True)
+    limiter.init_app(app)
 
     # Configure Celery with the Flask app context BEFORE importing blueprints/tasks
     configure_celery(app, celery_app)
@@ -170,6 +172,10 @@ def create_app():
     with app.app_context():
         # Create database tables if they don't exist
         db.create_all()
+
+    @app.errorhandler(RateLimitExceeded)
+    def handle_rate_limit(e):
+        return jsonify({"error": "Rate limit exceeded", "limit": str(e.description)}), 429
 
     # -------------------- Admin routes (defined BEFORE catch-all) --------------------
 
