@@ -87,6 +87,7 @@ python -m src.main
 - `https://easygifmaker.com/crop` (React tool)
 - `https://easygifmaker.com/optimize` (React tool)
 - `https://easygifmaker.com/add-text` (React tool)
+- `https://easygifmaker.com/reverse` (React tool using `/api/reverse`)
 
 ## 🎯 **Benefits of This Approach**
 
