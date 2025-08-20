@@ -18,11 +18,13 @@ import yt_dlp # Import yt_dlp
 from PIL import Image, ImageDraw, ImageFont
 
 from src.tasks import convert_video_to_gif_task, create_gif_from_images_task, resize_gif_task, crop_gif_task, optimize_gif_task, add_text_to_gif_task, add_text_layers_to_gif_task, handle_upload_task, orchestrate_gif_from_urls_task, download_file_from_url_task_helper
+from src.main import limiter
 
 gif_bp = Blueprint("gif", __name__)
 
 
 @gif_bp.route("/ai/convert", methods=["POST"])
+@limiter.limit("5 per minute")
 def convert():
     data = request.get_json()
     if not data or "url" not in data:
@@ -31,6 +33,7 @@ def convert():
     return jsonify({"message": "Conversion request received", "data": data}), 200
 
 @gif_bp.route("/ai/add-text", methods=["POST"])
+@limiter.limit("5 per minute")
 def ai_add_text_layers():
     """AI endpoint: Add text to GIF with multi-layer support via JSON.
     Accepts: { url | base64_data, layers: [ { text, font_family, font_size, color, stroke_color, stroke_width, horizontal_align, vertical_align, offset_x, offset_y, start_time, end_time, animation_style, max_width_ratio, line_height, auto_fit, font_url } ] }
@@ -161,6 +164,7 @@ def ai_add_text_layers():
         return jsonify({"error": "An unexpected error occurred while adding text to the GIF."}), 500
 
 @gif_bp.route("/gif-metadata", methods=["POST"])
+@limiter.limit("5 per minute")
 def gif_metadata():
     """Return duration (seconds) and frame count for a GIF file or URL."""
     try:
@@ -256,6 +260,7 @@ def get_aspect_ratio_dimensions(width, height, aspect_ratio):
 
 @gif_bp.route("/gif-maker", methods=["POST"])
 @cross_origin()
+@limiter.limit("5 per minute")
 def create_gif_from_images():
     """Create GIF from uploaded images or URLs"""
     try:
@@ -344,6 +349,7 @@ def create_gif_from_images():
 
 @gif_bp.route("/video-to-gif", methods=["POST"])
 @cross_origin()
+@limiter.limit("5 per minute")
 def convert_video_to_gif():
     """Convert video to GIF (optionally with audio as .mp4 for direct video links only)"""
     try:
@@ -407,6 +413,7 @@ def convert_video_to_gif():
         return jsonify({"error": str(e) if str(e) else "An unexpected error occurred during video conversion."}), 500
 
 @gif_bp.route("/resize", methods=["POST"])
+@limiter.limit("5 per minute")
 def resize_gif():
     """Resize GIF"""
     try:
@@ -473,6 +480,7 @@ def resize_gif():
         return jsonify({"error": "An unexpected error occurred while resizing the GIF."}), 500
 
 @gif_bp.route("/crop", methods=["POST"])
+@limiter.limit("5 per minute")
 def crop_gif():
     """Crop GIF with advanced options"""
     try:
@@ -525,6 +533,7 @@ def crop_gif():
         return jsonify({"error": "An unexpected error occurred while cropping the GIF."}), 500
 
 @gif_bp.route("/optimize", methods=["POST"])
+@limiter.limit("5 per minute")
 def optimize_gif():
     """Optimize GIF to reduce file size"""
     try:
@@ -577,6 +586,7 @@ def optimize_gif():
         return jsonify({"error": "An unexpected error occurred while optimizing the GIF."}), 500
 
 @gif_bp.route("/add-text", methods=["POST"])
+@limiter.limit("5 per minute")
 def add_text_to_gif():
     """Add text to GIF with advanced customization"""
     try:
@@ -683,6 +693,7 @@ def add_text_to_gif():
         return jsonify({"error": "An unexpected error occurred while adding text to the GIF."}), 500
 
 @gif_bp.route("/add-text-layers", methods=["POST"])
+@limiter.limit("5 per minute")
 def add_text_layers_to_gif():
     """Add multiple text layers to a GIF with per-layer customization and optional custom fonts."""
     try:
@@ -806,6 +817,7 @@ def health_check():
     })
 
 @gif_bp.route("/upload", methods=["POST"])
+@limiter.limit("5 per minute")
 def handle_upload():
     """Handle URL uploads and return the video file content as a direct response (for preview/playback)"""
     data = request.get_json()
