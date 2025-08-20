@@ -81,7 +81,7 @@ def sitemap():
 - `/convert/avi-to-gif` - Convert AVI to GIF
 
 ### Features Category
-- `/features/reverse-gif` - Reverse GIF animation
+- `/features/reverse-gif` - Reverse GIF animation (powered by `/api/reverse`)
 - `/features/crop-gif` - Crop GIF tool
 - `/features/resize-gif` - Resize GIF tool
 

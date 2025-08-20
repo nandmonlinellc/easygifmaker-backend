@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 import yt_dlp
 import time
 import resource
+from src.utils.url_validation import validate_remote_url
 
 # Import the shared Celery application instance
 from src.celery_app import celery as celery_app
@@ -48,9 +49,8 @@ def download_file_from_url_task_helper(url, temp_dir, max_size):
             os.makedirs(temp_dir, exist_ok=True)
             logging.info(f"Created temp_dir: {temp_dir}")
 
+        validate_remote_url(url)
         parsed_url = urlparse(url)
-        if not parsed_url.scheme or not parsed_url.netloc:
-            raise ValueError("Invalid URL")
 
         # Handle video sources via yt-dlp
         if any(domain in url for domain in ["youtube.com", "youtu.be", "dailymotion.com"]):
@@ -788,6 +788,79 @@ def optimize_gif_task(self, gif_path, quality, colors, lossy, dither, optimize_l
         raise
     finally:
         # Clean up the input GIF file. The output_dir is managed by the main cleanup task.
+        try:
+            if os.path.exists(gif_path):
+                os.remove(gif_path)
+        except Exception as e:
+            logging.warning(f"Error deleting input GIF file {gif_path}: {e}")
+
+@celery_app.task(bind=True)
+def reverse_gif_task(self, gif_path, output_dir, upload_folder):
+    _task_start = time.time()
+    try:
+        logging.info(f"[reverse_gif_task] gif_path={gif_path}, output_dir={output_dir}, upload_folder={upload_folder}")
+        if not os.path.isabs(gif_path):
+            gif_path = os.path.join(upload_folder, gif_path)
+        if not os.path.exists(gif_path):
+            logging.error(f"[reverse_gif_task] File does not exist: {gif_path}")
+            raise FileNotFoundError(f"Input GIF for reverse does not exist: {gif_path}")
+        gif = Image.open(gif_path)
+        frames = []
+        durations = []
+        for frame in range(getattr(gif, 'n_frames', 1)):
+            gif.seek(frame)
+            frames.append(gif.copy())
+            durations.append(gif.info.get('duration', 100))
+        frames.reverse()
+        durations.reverse()
+        output_path = os.path.join(output_dir, f"reversed_{uuid.uuid4().hex}.gif")
+        frames[0].save(
+            output_path,
+            save_all=True,
+            append_images=frames[1:],
+            duration=durations,
+            loop=gif.info.get('loop', 0)
+        )
+        if not os.path.exists(output_path) or os.path.getsize(output_path) < 1024:
+            logging.error(f"[reverse_gif_task] Output GIF missing or too small: {output_path}")
+            raise Exception("Output GIF missing or too small.")
+        rel = os.path.relpath(output_path, upload_folder)
+        try:
+            peak_kb = getattr(resource.getrusage(resource.RUSAGE_SELF), 'ru_maxrss', 0)
+            jm = JobMetric(tool='reverse', task_id=self.request.id if getattr(self, 'request', None) else None,
+                           status='SUCCESS', input_type='gif',
+                           output_size_bytes=os.path.getsize(output_path) if os.path.exists(output_path) else None,
+                           processing_time_ms=int((time.time()-_task_start)*1000),
+                           options=f"peak_kb={peak_kb}")
+            flask_app = get_flask_app()
+            if flask_app:
+                with flask_app.app_context():
+                    db.session.add(jm)
+                    db.session.commit()
+            else:
+                db.session.add(jm)
+                db.session.commit()
+        except Exception:
+            pass
+        return rel
+    except Exception as e:
+        logging.error(f"Error in reverse_gif_task: {e}", exc_info=True)
+        try:
+            jm = JobMetric(tool='reverse', task_id=self.request.id if getattr(self, 'request', None) else None,
+                           status='FAILURE', error_message=str(e),
+                           processing_time_ms=int((time.time()-_task_start)*1000))
+            flask_app = get_flask_app()
+            if flask_app:
+                with flask_app.app_context():
+                    db.session.add(jm)
+                    db.session.commit()
+            else:
+                db.session.add(jm)
+                db.session.commit()
+        except Exception:
+            pass
+        raise
+    finally:
         try:
             if os.path.exists(gif_path):
                 os.remove(gif_path)

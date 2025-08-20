@@ -1,5 +1,5 @@
 
-from flask import Blueprint, request, jsonify, send_file, current_app, send_from_directory
+from flask import Blueprint, request, jsonify, send_file, current_app, send_from_directory, url_for
 from flask_cors import cross_origin
 from werkzeug.utils import secure_filename
 import os
@@ -16,9 +16,12 @@ from src.celery_app import celery as celery_app
 from celery.result import AsyncResult, GroupResult
 import yt_dlp # Import yt_dlp
 from PIL import Image, ImageDraw, ImageFont
+from src.utils.url_validation import validate_remote_url
 
-from src.tasks import convert_video_to_gif_task, create_gif_from_images_task, resize_gif_task, crop_gif_task, optimize_gif_task, add_text_to_gif_task, add_text_layers_to_gif_task, handle_upload_task, orchestrate_gif_from_urls_task, download_file_from_url_task_helper
 from src.main import limiter
+
+from src.tasks import convert_video_to_gif_task, create_gif_from_images_task, resize_gif_task, crop_gif_task, optimize_gif_task, add_text_to_gif_task, add_text_layers_to_gif_task, handle_upload_task, orchestrate_gif_from_urls_task, download_file_from_url_task_helper, reverse_gif_task
+
 
 gif_bp = Blueprint("gif", __name__)
 
@@ -51,9 +54,10 @@ def ai_add_text_layers():
         gif_path_for_probe = None
         # URL input
         if data.get('url'):
+            url = validate_remote_url(data['url'])
             gif_temp_path = os.path.join(temp_dir, "temp_gif.gif")
             try:
-                with requests.get(data['url'], stream=True, timeout=30) as r:
+                with requests.get(url, stream=True, timeout=30) as r:
                     r.raise_for_status()
                     with open(gif_temp_path, 'wb') as f:
                         for chunk in r.iter_content(chunk_size=8192):
@@ -143,6 +147,7 @@ def ai_add_text_layers():
             font_url = l.get('font_url')
             if font_url:
                 try:
+                    font_url = validate_remote_url(font_url)
                     with requests.get(font_url, stream=True, timeout=20) as r:
                         r.raise_for_status()
                         fname = f"font_{idx}_{uuid.uuid4().hex}.ttf"
@@ -172,6 +177,7 @@ def gif_metadata():
         duration = 0
         n_frames = 1
         if url:
+            url = validate_remote_url(url)
             temp_dir = tempfile.mkdtemp(dir=current_app.config.get('UPLOAD_FOLDER'))
             gif_path = os.path.join(temp_dir, "temp_gif.gif")
             with requests.get(url, stream=True) as r:
@@ -585,6 +591,38 @@ def optimize_gif():
         logging.error(f"Error in optimize_gif: {e}", exc_info=True)
         return jsonify({"error": "An unexpected error occurred while optimizing the GIF."}), 500
 
+@gif_bp.route("/reverse", methods=["POST"])
+def reverse_gif():
+    """Reverse GIF frames"""
+    try:
+        url = request.form.get("url")
+        temp_dir = tempfile.mkdtemp(dir=current_app.config.get('UPLOAD_FOLDER'))
+        try:
+            if url:
+                upload_folder = current_app.config['UPLOAD_FOLDER']
+                max_content_length = current_app.config['MAX_CONTENT_LENGTH']
+                download_task = handle_upload_task.apply(args=[url, temp_dir, upload_folder, max_content_length])
+                gif_path = download_task.get()
+            else:
+                if "file" not in request.files:
+                    return jsonify({"error": "No file provided"}), 400
+                file = request.files["file"]
+                if file.filename == "":
+                    return jsonify({"error": "No file selected"}), 400
+                gif_path = os.path.join(temp_dir, secure_filename(file.filename))
+                file.save(gif_path)
+
+            upload_folder = current_app.config['UPLOAD_FOLDER']
+            task = reverse_gif_task.apply(args=[gif_path, temp_dir, upload_folder])
+            rel = task.get()
+            download_url = url_for('gif.download_result', filename=rel, _external=True)
+            return jsonify({"download_url": download_url}), 200
+        finally:
+            pass
+    except Exception as e:
+        logging.error(f"Error in reverse_gif: {e}", exc_info=True)
+        return jsonify({"error": "An unexpected error occurred while reversing the GIF."}), 500
+
 @gif_bp.route("/add-text", methods=["POST"])
 @limiter.limit("5 per minute")
 def add_text_to_gif():
@@ -617,7 +655,7 @@ def add_text_to_gif():
             # We'll get frame count and duration from the GIF after upload
             if url:
                 # Download GIF to temp_dir to probe metadata
-                import requests
+                url = validate_remote_url(url)
                 gif_temp_path = os.path.join(temp_dir, "temp_gif.gif")
                 with requests.get(url, stream=True) as r:
                     r.raise_for_status()
@@ -702,6 +740,7 @@ def add_text_layers_to_gif():
         try:
             # Probe GIF to obtain fps and n_frames from either URL or file
             if url:
+                url = validate_remote_url(url)
                 gif_temp_path = os.path.join(temp_dir, "temp_gif.gif")
                 with requests.get(url, stream=True) as r:
                     r.raise_for_status()

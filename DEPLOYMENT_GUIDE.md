@@ -92,6 +92,15 @@ fly secrets set FLASK_ENV=production
 
 # Set any other required secrets
 fly secrets set YOUR_SECRET_KEY=your_value
+
+# Token used to authorize admin routes
+fly secrets set ADMIN_TOKEN=your_admin_token
+```
+
+Admin endpoints now require an `Authorization` header with this token:
+
+```bash
+curl -H "Authorization: Bearer $ADMIN_TOKEN" https://yourdomain.com/admin/usage
 ```
 
 ### **3. Database Setup (if needed)**
