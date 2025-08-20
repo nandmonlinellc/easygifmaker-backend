@@ -1,4 +1,5 @@
 import os
+import logging
 from celery import Celery
 
 def fix_redis_ssl_url(url):
@@ -29,9 +30,11 @@ broker_url, result_backend = get_celery_urls()
 celery.conf.broker_url = broker_url
 celery.conf.result_backend = result_backend
 
-# Debug: Print broker and backend URLs at startup
-print(f"[Celery Debug] broker_url: {celery.conf.broker_url}")
-print(f"[Celery Debug] result_backend: {celery.conf.result_backend}")
+# Debug: Log broker and backend URLs at startup
+logging.debug("[Celery Debug] broker_url: %s", celery.conf.broker_url)
+logging.debug(
+    "[Celery Debug] result_backend: %s", celery.conf.result_backend
+)
 
 # Do not import the Flask app or tasks here: importing `src.main` or `src.tasks`
 # at module import time can create a circular import (celery_app -> main -> celery_app).
