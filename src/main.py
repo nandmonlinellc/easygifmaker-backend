@@ -2,12 +2,9 @@ import os
 import sys
 import logging
 import traceback
-import time
-import threading
-import shutil
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from flask import Flask, send_from_directory, current_app, render_template, make_response, redirect, request, abort
+from flask import Flask, send_from_directory, render_template, make_response, redirect, request, abort
 from flask_cors import CORS, cross_origin
 from src.celery_app import celery as celery_app
 from src.models.user import db, APILog # Import APILog
@@ -17,45 +14,6 @@ import requests
 import smtplib
 from email.message import EmailMessage
 
-def clean_temp_files_task(app_context):
-    """A background task that cleans up old temporary files."""
-    with app_context:
-        upload_folder = current_app.config.get('UPLOAD_FOLDER')
-        if not upload_folder:
-            logging.warning("UPLOAD_FOLDER not configured. Cleanup task will not run.")
-            return
-
-        max_age_seconds = 7200  # 2 hours
-        check_interval_seconds = 3600 # 1 hour
-        logging.info(
-            f"Starting cleanup task for folder: {upload_folder}. "
-            f"Checking every {check_interval_seconds}s for items older than {max_age_seconds}s."
-        )
-        
-  
-        while True:
-            try:
-                now = time.time()
-                for item_name in os.listdir(upload_folder):
-                    item_path = os.path.join(upload_folder, item_name)
-                    try:
-                        if os.path.isdir(item_path):
-                            item_age = now - os.path.getmtime(item_path)
-                            if item_age > max_age_seconds:
-                                shutil.rmtree(item_path, ignore_errors=True)
-                                logging.info(f"Deleted old temporary directory: {item_path}")
-                    except FileNotFoundError:
-                        continue
-            except Exception as e:
-                logging.error(f"Error in cleanup task: {e}", exc_info=True)
-            time.sleep(check_interval_seconds)
-def start_background_tasks(app):
-    # Use a flag on the app object to ensure the thread is only started once.
-    if not hasattr(app, 'cleanup_thread_started'):
-        app.cleanup_thread_started = True
-        thread = threading.Thread(target=clean_temp_files_task, args=(app.app_context(),), daemon=True)
-        thread.start()
-        logging.info("Started temporary file cleanup thread.")
 
 def configure_celery(app, celery_instance):
     celery_instance.conf.update(app.config)
@@ -121,6 +79,7 @@ def create_app():
 
     # Import tasks now that Celery has been configured so tasks can register safely
     import src.tasks  # noqa: F401
+    import src.tasks_cleanup  # noqa: F401
     # Import blueprints and tasks AFTER Celery is configured
     from src.routes.gif import gif_bp
     # from src.routes.user import user_bp  # Disabled for MVP
@@ -129,9 +88,6 @@ def create_app():
 
     # Import SEO pages data
     from src.seo_pages import seo_pages, get_related_pages
-
-    # Start background tasks
-    start_background_tasks(app)
 
     with app.app_context():
         # Create database tables if they don't exist
