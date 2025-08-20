@@ -18,8 +18,6 @@ logging.basicConfig(
 )
 
 from flask_cors import CORS, cross_origin
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
 from flask_limiter.errors import RateLimitExceeded
 from src.celery_app import celery as celery_app
 from src.models.user import db, APILog # Import APILog
@@ -28,9 +26,8 @@ from src.config import DevelopmentConfig, ProductionConfig
 import requests
 import smtplib
 from email.message import EmailMessage
+from src.utils.limiter import limiter
 
-
-limiter = Limiter(key_func=get_remote_address, default_limits=["200 per minute"])
 
 
 

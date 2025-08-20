@@ -18,7 +18,7 @@ import yt_dlp # Import yt_dlp
 from PIL import Image, ImageDraw, ImageFont
 from src.utils.url_validation import validate_remote_url
 
-from src.main import limiter
+from src.utils.limiter import limiter
 
 
 
