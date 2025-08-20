@@ -7,7 +7,21 @@ import threading
 import shutil
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from flask import Flask, send_from_directory, current_app, render_template, make_response, redirect, request, abort
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+)
+
+from flask import (
+    Flask,
+    send_from_directory,
+    current_app,
+    render_template,
+    make_response,
+    redirect,
+    request,
+    abort,
+)
 from flask_cors import CORS, cross_origin
 from src.celery_app import celery as celery_app
 from src.models.user import db, APILog # Import APILog
@@ -79,8 +93,13 @@ def configure_celery(app, celery_instance):
     celery_instance.conf.result_backend = fix_redis_ssl_url(backend_url)
     
     # Debug logging
-    print(f"[Flask Debug] Celery broker_url: {celery_instance.conf.broker_url}")
-    print(f"[Flask Debug] Celery result_backend: {celery_instance.conf.result_backend}")
+    logging.debug(
+        "[Flask Debug] Celery broker_url: %s", celery_instance.conf.broker_url
+    )
+    logging.debug(
+        "[Flask Debug] Celery result_backend: %s",
+        celery_instance.conf.result_backend,
+    )
     
     # Celery config is updated from Flask config. Keys like CELERY_BROKER_URL
     # are automatically mapped to broker_url. The line below was incorrect
@@ -106,17 +125,19 @@ def create_app():
     if upload_folder:
         os.makedirs(upload_folder, exist_ok=True)
 
-    # Set up logging
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-    
     # Initialize extensions
     CORS(app, resources={r"/api/*": {"origins": app.config['CORS_ORIGINS']}})
     db.init_app(app)
 
     # Configure Celery with the Flask app context BEFORE importing blueprints/tasks
     configure_celery(app, celery_app)
-    print(f"[Flask Debug] Celery broker_url: {celery_app.conf.broker_url}")
-    print(f"[Flask Debug] Celery result_backend: {celery_app.conf.result_backend}")
+    logging.debug(
+        "[Flask Debug] Celery broker_url: %s", celery_app.conf.broker_url
+    )
+    logging.debug(
+        "[Flask Debug] Celery result_backend: %s",
+        celery_app.conf.result_backend,
+    )
     app.celery = celery_app
 
     # Import tasks now that Celery has been configured so tasks can register safely
