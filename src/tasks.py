@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 import yt_dlp
 import time
 import resource
+from src.utils.url_validation import validate_remote_url
 
 # Import the shared Celery application instance
 from src.celery_app import celery as celery_app
@@ -48,9 +49,8 @@ def download_file_from_url_task_helper(url, temp_dir, max_size):
             os.makedirs(temp_dir, exist_ok=True)
             logging.info(f"Created temp_dir: {temp_dir}")
 
+        validate_remote_url(url)
         parsed_url = urlparse(url)
-        if not parsed_url.scheme or not parsed_url.netloc:
-            raise ValueError("Invalid URL")
 
         # Handle video sources via yt-dlp
         if any(domain in url for domain in ["youtube.com", "youtu.be", "dailymotion.com"]):
