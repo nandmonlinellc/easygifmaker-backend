@@ -501,8 +501,12 @@ def reverse_gif():
             if url:
                 upload_folder = current_app.config['UPLOAD_FOLDER']
                 max_content_length = current_app.config['MAX_CONTENT_LENGTH']
-                download_task = handle_upload_task.apply(args=[url, temp_dir, upload_folder, max_content_length])
-                gif_path = download_task.get()
+                # Create a chain: download first, then reverse
+                reverse_signature = reverse_gif_task.s(temp_dir, upload_folder)
+                task_chain = chain(handle_upload_task.s(url, temp_dir, upload_folder, max_content_length), reverse_signature)
+                task = task_chain.apply_async([], queue="fileops")
+                logging.info(f"/reverse (url) returning task id: {task.id}")
+                return jsonify({"task_id": task.id}), 202
             else:
                 if "file" not in request.files:
                     return jsonify({"error": "No file provided"}), 400
@@ -512,17 +516,15 @@ def reverse_gif():
                 gif_path = os.path.join(temp_dir, secure_filename(file.filename))
                 file.save(gif_path)
 
-            upload_folder = current_app.config['UPLOAD_FOLDER']
-            task = reverse_gif_task.delay(gif_path, temp_dir, upload_folder)
-            task_id = task.id
-            return jsonify({"task_id": task_id}), 202
+                upload_folder = current_app.config['UPLOAD_FOLDER']
+                task = reverse_gif_task.apply_async([gif_path, temp_dir, upload_folder], queue="fileops")
+                logging.info(f"/reverse (file) returning task id: {task.id}")
+                return jsonify({"task_id": task.id}), 202
         finally:
             pass
     except Exception as e:
         logging.error(f"Error in reverse_gif: {e}", exc_info=True)
         return jsonify({"error": "An unexpected error occurred while reversing the GIF."}), 500
-
-@gif_bp.route("/add-text", methods=["POST"])
 @limiter.limit("5 per minute")
 def add_text_to_gif():
     """Add text to GIF with advanced customization"""

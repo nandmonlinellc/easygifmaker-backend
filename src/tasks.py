@@ -828,21 +828,48 @@ def reverse_gif_task(self, gif_path, output_dir, upload_folder):
     _task_start = time.time()
     try:
         logging.info(f"[reverse_gif_task] gif_path={gif_path}, output_dir={output_dir}, upload_folder={upload_folder}")
+        
+        # Handle case where gif_path comes from a chained task (relative path)
         if not os.path.isabs(gif_path):
             gif_path = os.path.join(upload_folder, gif_path)
+            
         if not os.path.exists(gif_path):
             logging.error(f"[reverse_gif_task] File does not exist: {gif_path}")
             raise FileNotFoundError(f"Input GIF for reverse does not exist: {gif_path}")
+            
+        logging.info(f"[reverse_gif_task] File size: {os.path.getsize(gif_path)} bytes")
+        
+        # Check if it's a GIF file
+        mime = magic.from_file(gif_path, mime=True)
+        if mime != 'image/gif':
+            logging.error(f"[reverse_gif_task] File is not a GIF: {mime}")
+            raise ValueError(f"File is not a GIF: {mime}")
+        
+        logging.info(f"[reverse_gif_task] Detected mime type: {mime}")
+        
         gif = Image.open(gif_path)
         frames = []
         durations = []
-        for frame in range(getattr(gif, 'n_frames', 1)):
-            gif.seek(frame)
-            frames.append(gif.copy())
-            durations.append(gif.info.get('duration', 100))
+        
+        try:
+            for frame in range(getattr(gif, 'n_frames', 1)):
+                gif.seek(frame)
+                frames.append(gif.copy())
+                durations.append(gif.info.get('duration', 100))
+        except EOFError:
+            pass
+            
+        if not frames:
+            raise ValueError("No frames found in GIF")
+            
+        logging.info(f"[reverse_gif_task] Found {len(frames)} frames to reverse")
+        
+        # Reverse the frames and durations
         frames.reverse()
         durations.reverse()
+        
         output_path = os.path.join(output_dir, f"reversed_{uuid.uuid4().hex}.gif")
+        
         frames[0].save(
             output_path,
             save_all=True,
@@ -850,9 +877,13 @@ def reverse_gif_task(self, gif_path, output_dir, upload_folder):
             duration=durations,
             loop=gif.info.get('loop', 0)
         )
+        
         if not os.path.exists(output_path) or os.path.getsize(output_path) < 1024:
             logging.error(f"[reverse_gif_task] Output GIF missing or too small: {output_path}")
             raise Exception("Output GIF missing or too small.")
+            
+        logging.info(f"[reverse_gif_task] Successfully created reversed GIF: {output_path} (size: {os.path.getsize(output_path)} bytes)")
+        
         rel = os.path.relpath(output_path, upload_folder)
         try:
             peak_kb = getattr(resource.getrusage(resource.RUSAGE_SELF), 'ru_maxrss', 0)
@@ -895,7 +926,6 @@ def reverse_gif_task(self, gif_path, output_dir, upload_folder):
                 os.remove(gif_path)
         except Exception as e:
             logging.warning(f"Error deleting input GIF file {gif_path}: {e}")
-
 @celery_app.task(bind=True)
 def add_text_to_gif_task(self, gif_path, text, font_size, color, font_family, stroke_color, stroke_width, horizontal_align, vertical_align, offset_x, offset_y, start_frame, end_frame, animation_style, output_dir, upload_folder):
     _task_start = time.time()
