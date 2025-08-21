@@ -504,10 +504,9 @@ def reverse_gif():
                 file.save(gif_path)
 
             upload_folder = current_app.config['UPLOAD_FOLDER']
-            task = reverse_gif_task.apply(args=[gif_path, temp_dir, upload_folder])
-            rel = task.get()
-            download_url = url_for('gif.download_result', filename=rel, _external=True)
-            return jsonify({"download_url": download_url}), 200
+            task = reverse_gif_task.delay(gif_path, temp_dir, upload_folder)
+            task_id = task.id
+            return jsonify({"task_id": task_id}), 202
         finally:
             pass
     except Exception as e:
