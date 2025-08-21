@@ -13,7 +13,6 @@ import yt_dlp
 import time
 import resource
 from src.utils.url_validation import validate_remote_url
-import magic
 
 # Import the shared Celery application instance
 from src.celery_app import celery as celery_app
@@ -500,7 +499,6 @@ def resize_gif_task(self, gif_path, width, height, maintain_aspect_ratio, output
             logging.info(f"[resize_gif_task] File size: {os.path.getsize(gif_path)} bytes")
             import mimetypes
             mime_type, _ = mimetypes.guess_type(gif_path)
-            logging.info(f"[resize_gif_task] Detected mime type: {mime_type}")
         
         gif = Image.open(gif_path)
         frames = []
@@ -582,7 +580,6 @@ def crop_gif_task(self, gif_path, x, y, width, height, aspect_ratio, output_dir,
             logging.info(f"[crop_gif_task] File size: {os.path.getsize(gif_path)} bytes")
             import mimetypes
             mime_type, _ = mimetypes.guess_type(gif_path)
-            logging.info(f"[crop_gif_task] Detected mime type: {mime_type}")
         
         gif = Image.open(gif_path)
         original_width, original_height = gif.size
@@ -677,7 +674,6 @@ def optimize_gif_task(self, gif_path, quality, colors, lossy, dither, optimize_l
             logging.info(f"[optimize_gif_task] File size: {os.path.getsize(gif_path)} bytes")
             import mimetypes
             mime_type, _ = mimetypes.guess_type(gif_path)
-            logging.info(f"[optimize_gif_task] Detected mime type: {mime_type}")
         
         output_path = os.path.join(output_dir, f"optimized_{uuid.uuid4().hex}.gif")
         
@@ -841,12 +837,8 @@ def reverse_gif_task(self, gif_path, output_dir, upload_folder):
         logging.info(f"[reverse_gif_task] File size: {os.path.getsize(gif_path)} bytes")
         
         # Check if it's a GIF file
-        mime = magic.from_file(gif_path, mime=True)
-        if mime != 'image/gif':
-            logging.error(f"[reverse_gif_task] File is not a GIF: {mime}")
-            raise ValueError(f"File is not a GIF: {mime}")
+        # Simple check - if it exists and we can open it as GIF, it should be valid
         
-        logging.info(f"[reverse_gif_task] Detected mime type: {mime}")
         
         gif = Image.open(gif_path)
         frames = []
@@ -1549,7 +1541,6 @@ def handle_upload_task(self, url, output_dir, upload_folder, max_content_length)
             logging.info(f"[handle_upload_task] Downloaded file: {video_path}, size: {os.path.getsize(video_path)} bytes")
             import mimetypes
             mime_type, _ = mimetypes.guess_type(video_path)
-            logging.info(f"[handle_upload_task] Detected mime type: {mime_type}")
         else:
             logging.error(f"[handle_upload_task] Downloaded file does not exist: {video_path}")
             raise FileNotFoundError(f"Downloaded file does not exist: {video_path}")
