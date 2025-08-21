@@ -193,6 +193,195 @@ def create_app():
         except Exception as e:
             return {'error': str(e)}, 500
 
+
+    @app.route("/admin/ai-usage")
+    @admin_required
+    def ai_usage_report():
+        """Detailed usage report for AI endpoints"""
+        try:
+            import datetime
+            from sqlalchemy import func, desc
+            
+            # Get time range from query params
+            hours = int(request.args.get("hours", 24))
+            since = datetime.datetime.utcnow() - datetime.timedelta(hours=hours)
+            
+            # AI-specific endpoints filter
+            ai_endpoints = ["/ai/convert", "/ai/add-text"]
+            ai_logs = APILog.query.filter(
+                APILog.timestamp >= since,
+                APILog.path.in_(ai_endpoints)
+            ).order_by(desc(APILog.timestamp)).all()
+            
+            # Group by IP and endpoint
+            usage_by_ip = {}
+            usage_by_endpoint = {}
+            user_agents = {}
+            
+            for log in ai_logs:
+                # By IP
+                if log.ip not in usage_by_ip:
+                    usage_by_ip[log.ip] = {"total": 0, "endpoints": {}}
+                usage_by_ip[log.ip]["total"] += 1
+                if log.path not in usage_by_ip[log.ip]["endpoints"]:
+                    usage_by_ip[log.ip]["endpoints"][log.path] = 0
+                usage_by_ip[log.ip]["endpoints"][log.path] += 1
+                
+                # By endpoint
+                if log.path not in usage_by_endpoint:
+                    usage_by_endpoint[log.path] = 0
+                usage_by_endpoint[log.path] += 1
+                
+                # User agents
+                if log.user_agent not in user_agents:
+                    user_agents[log.user_agent] = 0
+                user_agents[log.user_agent] += 1
+            
+            # Get AI-specific job metrics
+            ai_jobs = JobMetric.query.filter(
+                JobMetric.created_at >= since,
+                JobMetric.tool.in_(["ai-convert", "ai-add-text"])
+            ).all()
+            
+            return jsonify({
+                "window_hours": hours,
+                "total_ai_requests": len(ai_logs),
+                "total_ai_jobs": len(ai_jobs),
+                "usage_by_ip": dict(sorted(usage_by_ip.items(), key=lambda x: x[1]["total"], reverse=True)[:20]),
+                "usage_by_endpoint": usage_by_endpoint,
+                "top_user_agents": dict(sorted(user_agents.items(), key=lambda x: x[1], reverse=True)[:10]),
+                "success_rate": (len([j for j in ai_jobs if j.status == "SUCCESS"]) / len(ai_jobs)) if ai_jobs else 0
+            })
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    @app.route("/admin/api-stats")
+    @admin_required
+    def comprehensive_api_stats():
+        """Comprehensive API usage statistics"""
+        try:
+            import datetime
+            from sqlalchemy import func, desc
+            from collections import defaultdict
+            
+            hours = int(request.args.get("hours", 168))  # Default 7 days
+            since = datetime.datetime.utcnow() - datetime.timedelta(hours=hours)
+            
+            # All API logs in timeframe
+            logs = APILog.query.filter(APILog.timestamp >= since).all()
+            
+            # Categorize endpoints
+            endpoint_categories = {
+                "ai": ["/ai/convert", "/ai/add-text"],
+                "tools": ["/api/convert", "/api/resize", "/api/crop", "/api/optimize", "/api/add-text", "/api/reverse", "/api/gif-from-images"],
+                "admin": ["/admin/usage", "/admin/job-metrics", "/admin/indexnow"],
+                "other": []
+            }
+            
+            stats = {
+                "timeframe_hours": hours,
+                "total_requests": len(logs),
+                "unique_ips": len(set(log.ip for log in logs)),
+                "by_category": defaultdict(lambda: {"count": 0, "unique_ips": set()}),
+                "by_endpoint": defaultdict(int),
+                "hourly_breakdown": defaultdict(int),
+                "top_ips": defaultdict(int)
+            }
+            
+            for log in logs:
+                # Categorize endpoint
+                category = "other"
+                for cat, endpoints in endpoint_categories.items():
+                    if log.path in endpoints or any(log.path.startswith(ep) for ep in endpoints):
+                        category = cat
+                        break
+                
+                stats["by_category"][category]["count"] += 1
+                stats["by_category"][category]["unique_ips"].add(log.ip)
+                stats["by_endpoint"][log.path] += 1
+                stats["top_ips"][log.ip] += 1
+                
+                # Hourly breakdown
+                hour = log.timestamp.strftime("%Y-%m-%d %H:00")
+                stats["hourly_breakdown"][hour] += 1
+            
+            # Convert sets to counts
+            for category in stats["by_category"]:
+                stats["by_category"][category]["unique_ips"] = len(stats["by_category"][category]["unique_ips"])
+            
+            # Sort and limit results
+            stats["by_endpoint"] = dict(sorted(stats["by_endpoint"].items(), key=lambda x: x[1], reverse=True)[:20])
+            stats["top_ips"] = dict(sorted(stats["top_ips"].items(), key=lambda x: x[1], reverse=True)[:20])
+            stats["hourly_breakdown"] = dict(sorted(stats["hourly_breakdown"].items()))
+            
+            return jsonify(dict(stats))
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    @app.route("/admin/user-analysis")
+    @admin_required
+    def user_behavior_analysis():
+        """Analyze user behavior patterns"""
+        try:
+            import datetime
+            from collections import defaultdict
+            
+            hours = int(request.args.get("hours", 168))  # Default 7 days
+            since = datetime.datetime.utcnow() - datetime.timedelta(hours=hours)
+            
+            logs = APILog.query.filter(APILog.timestamp >= since).all()
+            
+            # Analyze user patterns
+            user_sessions = defaultdict(lambda: {
+                "requests": [],
+                "endpoints": set(),
+                "first_seen": None,
+                "last_seen": None,
+                "total_requests": 0
+            })
+            
+            for log in logs:
+                user = user_sessions[log.ip]
+                user["requests"].append({
+                    "timestamp": log.timestamp.isoformat(),
+                    "endpoint": log.path,
+                    "method": log.method
+                })
+                user["endpoints"].add(log.path)
+                user["total_requests"] += 1
+                
+                if user["first_seen"] is None or log.timestamp < datetime.datetime.fromisoformat(user["first_seen"].replace("Z", "+00:00")) if isinstance(user["first_seen"], str) else log.timestamp < user["first_seen"]:
+                    user["first_seen"] = log.timestamp
+                if user["last_seen"] is None or log.timestamp > datetime.datetime.fromisoformat(user["last_seen"].replace("Z", "+00:00")) if isinstance(user["last_seen"], str) else log.timestamp > user["last_seen"]:
+                    user["last_seen"] = log.timestamp
+            
+            # Convert to analysis format
+            analysis = []
+            for ip, data in user_sessions.items():
+                session_duration = (data["last_seen"] - data["first_seen"]).total_seconds() / 60 if data["first_seen"] and data["last_seen"] else 0
+                
+                analysis.append({
+                    "ip": ip,
+                    "total_requests": data["total_requests"],
+                    "unique_endpoints": len(data["endpoints"]),
+                    "endpoints_used": list(data["endpoints"]),
+                    "session_duration_minutes": round(session_duration, 2),
+                    "first_seen": data["first_seen"].isoformat() if data["first_seen"] else None,
+                    "last_seen": data["last_seen"].isoformat() if data["last_seen"] else None,
+                    "requests_per_minute": round(data["total_requests"] / max(session_duration / 60, 0.1), 2) if session_duration > 0 else data["total_requests"]
+                })
+            
+            # Sort by total requests
+            analysis.sort(key=lambda x: x["total_requests"], reverse=True)
+            
+            return jsonify({
+                "timeframe_hours": hours,
+                "total_unique_users": len(analysis),
+                "users": analysis[:50]  # Top 50 users
+            })
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
     # API-prefixed aliases to avoid SPA catch-all in some deployments
     @app.route('/api/admin/job-metrics/summary')
     @admin_required
