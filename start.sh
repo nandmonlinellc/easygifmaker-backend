@@ -31,10 +31,11 @@ fi
 echo "  CELERY_BROKER_URL=${CELERY_BROKER_URL:-}"
 echo "  CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND:-}"
 
-# The original string had gunicorn starting in the background and celery in the foreground.
-# The new string has celery in the background and gunicorn in the foreground.
-# This change is syntactically correct and does not require escaping corrections.
+PORT_TO_BIND=${PORT:-8080}
+echo "[Entrypoint] Starting Gunicorn (web server) on 0.0.0.0:${PORT_TO_BIND} in background..."
+gunicorn -b 0.0.0.0:${PORT_TO_BIND} --timeout=600 --keep-alive=5 --max-requests=100 --max-requests-jitter=10 src.main:app &
 
+sleep 2
 echo "[Entrypoint] Starting Celery worker (background task processor)..."
 # Concurrency = 1 to match 1 shared CPU; memory cap ~700MB per child; recycle after 10 tasks
 celery -A src.celery_app.celery worker \
@@ -45,8 +46,4 @@ celery -A src.celery_app.celery worker \
     --time-limit=600 \
     --soft-time-limit=300 \
     -Ofair \
-    -Q fileops,default &
-
-sleep 2
-PORT_TO_BIND="${PORT:-8080}"; echo "[Entrypoint] Starting Gunicorn (web server) on 0.0.0.0:${PORT_TO_BIND} in foreground..."
-exec gunicorn -b 0.0.0.0:${PORT_TO_BIND} --timeout=600 --keep-alive=5 --max-requests=100 --max-requests-jitter=10 src.main:app
+    -Q fileops,default
