@@ -18,7 +18,9 @@ primary_region = 'fra'
   auto_stop_machines = "stop"
   auto_start_machines = true
   min_machines_running = 1
-  # Only one process group, handled by start.sh (web + worker in one container)
+  max_machines_running = 1
+  [deploy]
+    strategy = "immediate"  # Only one process group, handled by start.sh (web + worker in one container)
   # Remove 'processes' to avoid Fly.io splitting into multiple machines
 
 [[vm]]
