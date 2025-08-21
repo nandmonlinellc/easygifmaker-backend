@@ -13,6 +13,7 @@ import yt_dlp
 import time
 import resource
 from src.utils.url_validation import validate_remote_url
+import magic
 
 # Import the shared Celery application instance
 from src.celery_app import celery as celery_app
