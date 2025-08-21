@@ -27,7 +27,7 @@ import requests
 import smtplib
 from email.message import EmailMessage
 from src.utils.limiter import limiter
-
+from src.utils.indexnow import notify_url_change, notify_urls_change
 
 
 
@@ -429,7 +429,75 @@ def create_app():
     
     return app
 
+
+@app.route("/admin/indexnow/submit", methods=["POST"])
+@admin_required
+def submit_indexnow():
+    """Submit URLs to IndexNow for instant indexing"""
+    try:
+        from src.seo_pages import seo_pages
+        
+        # Get URLs to submit
+        base_url = "https://easygifmaker.com"
+        urls = [f"{base_url}/", f"{base_url}/video-to-gif", f"{base_url}/gif-maker"]
+        
+        # Add SEO page URLs
+        seo_urls = [f"{base_url}/{p["category"]}/{p["slug"]}" for p in seo_pages]
+        urls.extend(seo_urls)
+        
+        # Submit to IndexNow
+        success = notify_urls_change(urls)
+        
+        return jsonify({
+            "status": "success" if success else "partial",
+            "message": f"Submitted {len(urls)} URLs to IndexNow",
+            "urls_count": len(urls)
+        })
+        
+    except Exception as e:
+        logging.error(f"IndexNow submission error: {e}")
+        return jsonify({"error": str(e)}), 500
 app = create_app()
+
+@app.route("/admin/indexnow/sitemap", methods=["POST"])
+@admin_required
+def regenerate_sitemap_and_notify():
+    """Regenerate sitemap and notify IndexNow"""
+    try:
+        from src.seo_pages import seo_pages
+        
+        # Regenerate sitemap (sitemap route will be called)
+        base_url = "https://easygifmaker.com"
+        
+        # Get all URLs from sitemap
+        urls = [
+            base_url,
+            f"{base_url}/video-to-gif",
+            f"{base_url}/gif-maker",
+            f"{base_url}/resize",
+            f"{base_url}/crop",
+            f"{base_url}/optimize",
+            f"{base_url}/add-text",
+            f"{base_url}/reverse"
+        ]
+        
+        # Add SEO page URLs
+        seo_urls = [f"{base_url}/{p["category"]}/{p["slug"]}" for p in seo_pages]
+        urls.extend(seo_urls)
+        
+        # Submit to IndexNow
+        success = notify_urls_change(urls)
+        
+        return jsonify({
+            "status": "success" if success else "partial",
+            "message": "Sitemap regenerated and submitted to IndexNow",
+            "urls_count": len(urls),
+            "sitemap_url": f"{base_url}/sitemap.xml"
+        })
+        
+    except Exception as e:
+        logging.error(f"Sitemap regeneration and IndexNow error: {e}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/sitemap.xml')
 def sitemap():

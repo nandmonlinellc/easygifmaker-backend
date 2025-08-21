@@ -1,2 +1,0 @@
-import{j as a}from"./ui-core-98LrUDJY.js";import{r as o}from"./react-vendor-C2JJ-PBx.js";const t=({adSlot:t,adFormat:s="auto",adLayout:d="",fullWidthResponsive:e=!1,style:l={}})=>(o.useEffect(()=>{try{(window.adsbygoogle=window.adsbygoogle||[]).push({})}catch(a){}},[]),a.jsx("ins",{className:"adsbygoogle",style:{display:"block"},"data-ad-client":"ca-pub-2276892930727265","data-ad-slot":t,"data-ad-format":s,"data-ad-layout":d,"data-full-width-responsive":e}));export{t as A};
-//# sourceMappingURL=AdsenseAd-CsG5eBEK.js.map
