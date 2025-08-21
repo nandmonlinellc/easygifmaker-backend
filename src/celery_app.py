@@ -30,6 +30,12 @@ broker_url, result_backend = get_celery_urls()
 celery.conf.broker_url = broker_url
 celery.conf.result_backend = result_backend
 
+# Add task timeout configurations for long-running video processing
+celery.conf.task_soft_time_limit = 300  # 5 minutes soft timeout
+celery.conf.task_time_limit = 600       # 10 minutes hard timeout
+celery.conf.worker_prefetch_multiplier = 1  # Process one task at a time
+celery.conf.task_acks_late = True       # Acknowledge after task completion
+celery.conf.worker_disable_rate_limits = True  # Disable rate limiting for processing
 # Debug: Log broker and backend URLs at startup
 logging.debug("[Celery Debug] broker_url: %s", celery.conf.broker_url)
 logging.debug(

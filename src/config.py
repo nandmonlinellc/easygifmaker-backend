@@ -39,7 +39,7 @@ class Config:
     def get_celery_result_backend(cls):
         """Get Celery result backend URL with SSL fix applied"""
         redis_url = os.environ.get('REDIS_URL')
-        backend_url = os.environ.get('CELERY_RESULT_BACKEND') or redis_url or 'redis://localhost:6379/0'
+        backend_url = os.environ.get('result_backend') or redis_url or 'redis://localhost:6379/0'
         return fix_redis_ssl_url(backend_url)
     
     # Legacy properties for backward compatibility
@@ -48,7 +48,7 @@ class Config:
         return self.get_celery_broker_url()
     
     @property
-    def CELERY_RESULT_BACKEND(self):
+    def result_backend(self):
         return self.get_celery_result_backend()
 
 class DevelopmentConfig(Config):

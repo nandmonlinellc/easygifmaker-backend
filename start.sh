@@ -33,7 +33,7 @@ echo "  CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND:-}"
 
 PORT_TO_BIND=${PORT:-8080}
 echo "[Entrypoint] Starting Gunicorn (web server) on 0.0.0.0:${PORT_TO_BIND} in background..."
-gunicorn -b 0.0.0.0:${PORT_TO_BIND} src.main:app &
+gunicorn -b 0.0.0.0:${PORT_TO_BIND} --timeout=600 --keep-alive=5 --max-requests=100 --max-requests-jitter=10 src.main:app &
 
 sleep 2
 echo "[Entrypoint] Starting Celery worker (background task processor)..."
@@ -41,9 +41,9 @@ echo "[Entrypoint] Starting Celery worker (background task processor)..."
 celery -A src.celery_app.celery worker \
     --loglevel=INFO \
     --concurrency=1 \
-    --max-memory-per-child=700000 \
+    --max-memory-per-child=1500000 \
     --max-tasks-per-child=10 \
-    --time-limit=1200 \
-    --soft-time-limit=900 \
+    --time-limit=600 \
+    --soft-time-limit=300 \
     -Ofair \
     -Q fileops,default
