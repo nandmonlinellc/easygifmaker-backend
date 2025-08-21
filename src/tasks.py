@@ -197,6 +197,10 @@ def convert_video_to_gif_task(self, video_path, start_time, duration, fps, width
             logging.error(f"[convert_video_to_gif_task] Input video file is empty: {video_path}")
             raise Exception(f"Input video file is empty: {video_path}")
         
+        # Add machine debugging for task processing
+        import socket
+        hostname = socket.gethostname()
+        logging.info(f"[convert_video_to_gif_task] Task processing on machine: {hostname}")        
         logging.info(f"[convert_video_to_gif_task] Processing video: {video_path} (size: {os.path.getsize(video_path)} bytes)")
         output_gif = os.path.join(output_dir, f"output_{uuid.uuid4().hex}.gif")
         cmd_gif = [

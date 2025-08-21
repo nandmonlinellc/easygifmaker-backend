@@ -280,7 +280,10 @@ def convert_video_to_gif():
         upload_folder = current_app.config['UPLOAD_FOLDER']
         session_dir = create_session_dir(upload_folder)
         logging.info(f"Created session directory for video upload: {session_dir}")
-
+        # Add machine/instance debugging
+        import socket
+        hostname = socket.gethostname()
+        logging.info(f"[video-to-gif] Upload handling on machine: {hostname}")
         try:
             url = request.form.get("url")
         except Exception as e:
@@ -289,11 +292,17 @@ def convert_video_to_gif():
 
         file = request.files.get("file")
         max_content_length = current_app.config['MAX_CONTENT_LENGTH']
-        try:
+        try:            
             video_path = resolve_video_input(url, file, session_dir, ALLOWED_VIDEO_EXTENSIONS, max_content_length)
         except ValueError as ve:
             return jsonify({"error": str(ve)}), 400
-
+            
+        # Add immediate file verification after upload
+        if not os.path.exists(video_path):
+            logging.error(f"[video-to-gif] Video file not found immediately after upload: {video_path}")
+            return jsonify({"error": "File upload failed - video not saved properly"}), 400
+        else:
+            logging.info(f"[video-to-gif] Video file verified after upload: {video_path} (size: {os.path.getsize(video_path)} bytes)")
         start_time = float(request.form.get("start_time", 0))
         duration = float(request.form.get("duration", 10))
         fps = int(request.form.get("fps", 10))
