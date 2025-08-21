@@ -631,7 +631,7 @@ def submit_indexnow():
         urls = [f"{base_url}/", f"{base_url}/video-to-gif", f"{base_url}/gif-maker"]
         
         # Add SEO page URLs
-        seo_urls = [f"{base_url}/{p["category"]}/{p["slug"]}" for p in seo_pages]
+        seo_urls = [f"{base_url}/{p['category']}/{p['slug']}" for p in seo_pages]
         urls.extend(seo_urls)
         
         # Submit to IndexNow
@@ -671,7 +671,7 @@ def regenerate_sitemap_and_notify():
         ]
         
         # Add SEO page URLs
-        seo_urls = [f"{base_url}/{p["category"]}/{p["slug"]}" for p in seo_pages]
+        seo_urls = [f"{base_url}/{p['category']}/{p['slug']}" for p in seo_pages]
         urls.extend(seo_urls)
         
         # Submit to IndexNow
