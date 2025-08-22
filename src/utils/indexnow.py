@@ -54,7 +54,7 @@ class IndexNow:
                     timeout=10
                 )
                 
-                if response.status_code == 200:
+                if response.status_code in (200, 202):
                     success_count += 1
                     logger.info(f"IndexNow: Successfully submitted {len(urls)} URLs to {endpoint}")
                 else:
