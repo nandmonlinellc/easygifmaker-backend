@@ -10,7 +10,7 @@ from functools import wraps
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 
-from flask import Flask, send_from_directory, render_template, make_response, redirect, request, abort, jsonify
+from flask import Flask, send_from_directory, render_template, make_response, redirect, request, abort, jsonify, current_app
 
 logging.basicConfig(
     level=logging.INFO,
@@ -135,6 +135,49 @@ def create_app():
         return jsonify({"error": "Rate limit exceeded", "limit": str(e.description)}), 429
 
     # -------------------- Admin routes (defined BEFORE catch-all) --------------------
+    @app.route('/admin/indexnow/submit', methods=['POST'])
+    @admin_required
+    def admin_indexnow_submit():
+        """Submit provided or all known URLs to IndexNow. Body JSON: {"urls": [...], "dry_run": bool}"""
+        try:
+            data = request.get_json(silent=True) or {}
+            urls = data.get('urls')
+            dry_run = bool(data.get('dry_run'))
+            base_url = 'https://easygifmaker.com'
+            from src.seo_pages import seo_pages as _seo_pages
+            core = [
+                '', 'video-to-gif','gif-maker','resize','crop','optimize','add-text','reverse','about','help','contact','privacy-policy','terms','blog'
+            ]
+            if not urls:
+                urls = [base_url + ('/' + u if u else '/') for u in core]
+                urls += [f"{base_url}/{p['category']}/{p['slug']}" for p in _seo_pages]
+            # Deduplicate
+            seen=set(); dedup=[]
+            for u in urls:
+                if u not in seen:
+                    seen.add(u); dedup.append(u)
+            urls=dedup
+            if dry_run:
+                return {'status':'dry_run','count':len(urls),'urls':urls[:50]}
+            from src.utils.indexnow import notify_urls_change
+            success = notify_urls_change(urls)
+            return {'status':'ok' if success else 'partial','count':len(urls)}
+        except Exception as e:
+            return {'error': str(e)}, 500
+
+    @app.route('/admin/indexnow/sitemap', methods=['POST'])
+    @admin_required
+    def admin_indexnow_sitemap():
+        """Submit sitemap.xml URL to IndexNow"""
+        try:
+            sitemap_url = 'https://easygifmaker.com/sitemap.xml'
+            from src.utils.indexnow import notify_url_change
+            success = notify_url_change(sitemap_url)
+            return {'status':'ok' if success else 'partial', 'url': sitemap_url}
+        except Exception as e:
+            return {'error': str(e)}, 500
+
+
 
     @app.route('/admin/usage')
     @admin_required
