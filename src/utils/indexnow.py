@@ -7,6 +7,7 @@ logger = logging.getLogger(__name__)
 
 class IndexNow:
     """IndexNow implementation for instant search engine indexing"""
+    last_results: list = []  # populated after submit
     
     def __init__(self, api_key: str, site_url: str):
         self.api_key = api_key
@@ -23,7 +24,8 @@ class IndexNow:
         return self.submit_urls([url])
     
     def submit_urls(self, urls: List[str]) -> bool:
-        """Submit multiple URLs to IndexNow"""
+        """Submit multiple URLs to IndexNow and capture per-endpoint results"""
+        self.last_results = []
         if not urls:
             return False
             
@@ -47,6 +49,7 @@ class IndexNow:
         success_count = 0
         for endpoint in self.endpoints:
             try:
+                record = {"endpoint": endpoint}
                 response = requests.post(
                     endpoint,
                     json=payload,
@@ -55,12 +58,19 @@ class IndexNow:
                 )
                 
                 if response.status_code in (200, 202):
+                    record["status"] = response.status_code
+                    record["ok"] = True
                     success_count += 1
                     logger.info(f"IndexNow: Successfully submitted {len(urls)} URLs to {endpoint}")
                 else:
+                    record["status"] = response.status_code
+                    record["ok"] = False
+                    self.last_results.append(record)
                     logger.warning(f"IndexNow: Failed to submit to {endpoint} - {response.status_code}")
                     
             except Exception as e:
+                record["error"] = str(e)
+                self.last_results.append(record)
                 logger.error(f"IndexNow: Error submitting to {endpoint}: {e}")
         
         return success_count > 0

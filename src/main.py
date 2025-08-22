@@ -159,9 +159,10 @@ def create_app():
             urls=dedup
             if dry_run:
                 return {'status':'dry_run','count':len(urls),'urls':urls[:50]}
-            from src.utils.indexnow import notify_urls_change
-            success = notify_urls_change(urls)
-            return {'status':'ok' if success else 'partial','count':len(urls)}
+            from src.utils.indexnow import get_indexnow_client
+            client = get_indexnow_client()
+            success = client.submit_urls(urls)
+            return {'status': 'ok' if success else 'partial', 'count': len(urls), 'endpoints': getattr(client, "last_results", [])}
         except Exception as e:
             return {'error': str(e)}, 500
 
@@ -484,6 +485,7 @@ def sitemap():
 
     static_urls = [
         base_url + "/",
+        base_url + "/reverse",
         base_url + "/about",
         base_url + "/contact",
         base_url + "/faq",
