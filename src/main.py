@@ -263,6 +263,22 @@ def create_app():
         except Exception as e:
             return {'error': str(e)}, 500
 
+    # Public IndexNow test endpoint (for testing purposes)
+    @app.route('/api/indexnow/test', methods=['GET'])
+    def test_indexnow():
+        """Test IndexNow integration with a simple URL submission."""
+        try:
+            from src.utils.indexnow import notify_url_change
+            test_url = f"{os.environ.get('SITE_URL', 'https://easygifmaker.com')}/"
+            success = notify_url_change(test_url)
+            return {
+                'status': 'success' if success else 'partial',
+                'test_url': test_url,
+                'message': 'IndexNow test completed'
+            }
+        except Exception as e:
+            return {'error': str(e)}, 500
+
     # API-prefixed aliases to avoid SPA catch-all in some deployments
     @app.route('/api/admin/indexnow/submit', methods=['POST'])
     @admin_required
