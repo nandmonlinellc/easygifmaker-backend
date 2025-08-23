@@ -83,6 +83,49 @@ def admin_required(f):
         return f(*args, **kwargs)
     return wrapper
 
+
+def all_known_urls():
+    """Compile a list of known URLs for IndexNow submissions."""
+    base_url = os.environ.get("SITE_URL", "https://easygifmaker.com")
+    from src.seo_pages import seo_pages
+
+    static_urls = [
+        f"{base_url}/",
+        f"{base_url}/reverse",
+        f"{base_url}/about",
+        f"{base_url}/contact",
+        f"{base_url}/faq",
+        f"{base_url}/video-to-gif",
+        f"{base_url}/gif-maker",
+        f"{base_url}/crop",
+        f"{base_url}/optimize",
+        f"{base_url}/add-text",
+        f"{base_url}/resize",
+        f"{base_url}/blog",
+    ]
+
+    seo_urls = [f"{base_url}/{p['category']}/{p['slug']}" for p in seo_pages]
+
+    blog_slugs = [
+        "how-to-make-gifs-from-videos",
+        "top-5-gif-optimization-tips",
+        "ultimate-guide-to-viral-gifs",
+        "add-text-to-gifs-guide",
+        "master-the-art-of-adding-text-to-gifs",
+        "professional-gif-cropping-and-composition-guide",
+        "gif-for-business-marketing",
+        "gif-accessibility-guide",
+        "gif-optimization-techniques",
+        "comprehensive-gif-making-guide",
+        "complete-guide-to-resize-gif",
+        "social-media-gif-strategy",
+        "creative-gif-design-tutorial",
+    ]
+
+    blog_urls = [f"{base_url}/blog/{slug}" for slug in blog_slugs]
+
+    return static_urls + seo_urls + blog_urls
+
 def create_app():
     app = Flask(__name__, 
                 static_folder=os.path.join(os.path.dirname(__file__), 'static'),
@@ -138,45 +181,28 @@ def create_app():
     @app.route('/admin/indexnow/submit', methods=['POST'])
     @admin_required
     def admin_indexnow_submit():
-        """Submit provided or all known URLs to IndexNow. Body JSON: {"urls": [...], "dry_run": bool}"""
-        try:
-            data = request.get_json(silent=True) or {}
-            urls = data.get('urls')
-            dry_run = bool(data.get('dry_run'))
-            base_url = 'https://easygifmaker.com'
-            from src.seo_pages import seo_pages as _seo_pages
-            core = [
-                '', 'video-to-gif','gif-maker','resize','crop','optimize','add-text','reverse','about','help','contact','privacy-policy','terms','blog'
-            ]
-            if not urls:
-                urls = [base_url + ('/' + u if u else '/') for u in core]
-                urls += [f"{base_url}/{p['category']}/{p['slug']}" for p in _seo_pages]
-            # Deduplicate
-            seen=set(); dedup=[]
-            for u in urls:
-                if u not in seen:
-                    seen.add(u); dedup.append(u)
-            urls=dedup
-            if dry_run:
-                return {'status':'dry_run','count':len(urls),'urls':urls[:50]}
-            from src.utils.indexnow import get_indexnow_client
-            client = get_indexnow_client()
-            success = client.submit_urls(urls)
-            return {'status': 'ok' if success else 'partial', 'count': len(urls), 'endpoints': getattr(client, "last_results", [])}
-        except Exception as e:
-            return {'error': str(e)}, 500
+        """Submit provided or all known URLs to IndexNow."""
+        data = request.get_json(silent=True) or {}
+        urls = data.get('urls') or all_known_urls()
+        dry_run = bool(data.get('dry_run'))
+
+        if dry_run:
+            return {'status': 'dry_run', 'count': len(urls), 'urls': urls[:50]}
+
+        from src.utils.indexnow import notify_urls_change
+
+        success = notify_urls_change(urls)
+        return {'status': 'ok' if success else 'partial', 'count': len(urls)}
 
     @app.route('/admin/indexnow/sitemap', methods=['POST'])
     @admin_required
     def admin_indexnow_sitemap():
         """Submit sitemap.xml URL to IndexNow"""
-        try:
-            sitemap_url = 'https://easygifmaker.com/sitemap.xml'
-            from src.utils.indexnow import notify_url_change
-            success = notify_url_change(sitemap_url)
-            return {'status':'ok' if success else 'partial', 'url': sitemap_url}
-        except Exception as e:
-            return {'error': str(e)}, 500
+        sitemap_url = f"{os.environ.get('SITE_URL', 'https://easygifmaker.com')}/sitemap.xml"
+        from src.utils.indexnow import notify_url_change
+
+        success = notify_url_change(sitemap_url)
+        return {'status': 'ok' if success else 'partial', 'url': sitemap_url}
 
 
 
@@ -470,9 +496,11 @@ def create_app():
         if app.config.get('DEBUG', False):
             return {'error': str(e), 'traceback': tb_str}, 500
         return {'error': 'An internal server error occurred.'}, 500
-    
+
     return app
 
+
+# Instantiate the Flask application for module-level routes
 app = create_app()
 
 @app.route('/sitemap.xml')
