@@ -264,6 +264,18 @@ def create_app():
             return {'error': str(e)}, 500
 
     # API-prefixed aliases to avoid SPA catch-all in some deployments
+    @app.route('/api/admin/indexnow/submit', methods=['POST'])
+    @admin_required
+    def api_admin_indexnow_submit():
+        """Submit provided or all known URLs to IndexNow (API endpoint)."""
+        return admin_indexnow_submit()
+
+    @app.route('/api/admin/indexnow/sitemap', methods=['POST'])
+    @admin_required
+    def api_admin_indexnow_sitemap():
+        """Submit sitemap.xml URL to IndexNow (API endpoint)"""
+        return admin_indexnow_sitemap()
+
     @app.route('/api/admin/job-metrics/summary')
     @admin_required
     def api_metrics_summary_alias():
