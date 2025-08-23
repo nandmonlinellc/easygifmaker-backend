@@ -7,6 +7,7 @@ Usage: python add_seo_page.py
 import json
 import sys
 import os
+import ast
 
 def add_seo_page():
     print("=== EasyGIFMaker SEO Page Generator ===\n")
@@ -92,70 +93,36 @@ def add_seo_page():
     
     with open(seo_file, 'r') as f:
         content = f.read()
+
+    # Parse the file content to find the seo_pages list
+    tree = ast.parse(content)
     
-    # Find the seo_pages list
-    start_marker = "seo_pages = ["
-    end_marker = "]"
-    
-    start_idx = content.find(start_marker)
-    if start_idx == -1:
-        print("Error: Could not find seo_pages list!")
+    # Find the seo_pages assignment
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name) and node.targets[0].id == 'seo_pages':
+            seo_pages_node = node
+            break
+    else:
+        print("Error: Could not find seo_pages list in the AST!")
         return
-    
-    # Find the end of the list
-    list_start = start_idx + len(start_marker)
-    brace_count = 1
-    end_idx = list_start
-    
-    for i, char in enumerate(content[list_start:], list_start):
-        if char == '[':
-            brace_count += 1
-        elif char == ']':
-            brace_count -= 1
-            if brace_count == 0:
-                end_idx = i
-                break
-    
-    # Format the new page data
-    page_str = f"""    {{
-        "slug": "{slug}",
-        "title": "{title}",
-        "description": "{description}",
-        "keywords": "{keywords}",
-        "template": "seo_template.html",
-        "category": "{category}",
-        "h1": "{h1}",
-        "content_sections": [
-"""
-    
-    for section in content_sections:
-        page_str += f"""            {{
-                "title": "{section['title']}",
-                "content": "{section['content']}"
-            }},
-"""
-    
-    page_str += "        ],\n        \"faqs\": [\n"
-    
-    for faq in faqs:
-        page_str += f"""            {{
-                "question": "{faq['question']}",
-                "answer": "{faq['answer']}"
-            }},
-"""
-    
-    page_str += "        ]\n    }"
-    
-    # Insert the new page
-    new_content = content[:end_idx] + ",\n" + page_str + content[end_idx:]
-    
+
+    # Convert the new page data to an AST node
+    new_page_node = ast.parse(repr(page_data)).body[0].value
+
+    # Append the new page to the list
+    seo_pages_node.value.elts.append(new_page_node)
+
+    # Unparse the AST back to code
+    new_content = ast.unparse(tree)
+
     # Write back to file
     with open(seo_file, 'w') as f:
         f.write(new_content)
     
     print(f"\n✅ Successfully added SEO page: {category}/{slug}")
-    print(f"URL: https://easygifmaker.com/{category}/{slug}")
+    url = f"https://easygifmaker.com/{category}/{slug}"
+    print(f"URL: {url}")
     print("\nThe page will be automatically included in the sitemap.")
 
 if __name__ == "__main__":
-    add_seo_page() 
+    add_seo_page()
