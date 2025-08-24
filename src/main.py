@@ -95,6 +95,10 @@ def all_known_urls():
         f"{base_url}/about",
         f"{base_url}/contact",
         f"{base_url}/faq",
+        f"{base_url}/help",
+        f"{base_url}/privacy-policy",
+        f"{base_url}/terms",
+        f"{base_url}/cookie-policy",
         f"{base_url}/video-to-gif",
         f"{base_url}/gif-maker",
         f"{base_url}/crop",
@@ -102,6 +106,9 @@ def all_known_urls():
         f"{base_url}/add-text",
         f"{base_url}/resize",
         f"{base_url}/blog",
+        f"{base_url}/sitemap.xml",
+        f"{base_url}/.well-known/ai-plugin.json",
+        f"{base_url}/openapi.yaml",
     ]
 
     seo_urls = [f"{base_url}/{p['category']}/{p['slug']}" for p in seo_pages]
