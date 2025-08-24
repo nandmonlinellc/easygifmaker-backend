@@ -33,7 +33,19 @@ echo "  CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND:-}"
 
 PORT_TO_BIND=${PORT:-8080}
 echo "[Entrypoint] Starting Gunicorn (web server) on 0.0.0.0:${PORT_TO_BIND} in background..."
-gunicorn -b 0.0.0.0:${PORT_TO_BIND} --timeout=600 --keep-alive=5 --max-requests=100 --max-requests-jitter=10 src.main:app &
+gunicorn -b 0.0.0.0:${PORT_TO_BIND} \
+    --timeout=1800 \
+    --keep-alive=10 \
+    --max-requests=50 \
+    --max-requests-jitter=5 \
+    --worker-class=sync \
+    --workers=1 \
+    --worker-connections=10 \
+    --limit-request-line=8192 \
+    --limit-request-field_size=16384 \
+    --max-requests-jitter=5 \
+    --preload \
+    src.main:app &
 
 sleep 2
 echo "[Entrypoint] Starting Celery worker (background task processor)..."

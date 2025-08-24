@@ -10,9 +10,9 @@ primary_region = 'fra'
   UPLOAD_FOLDER = "/data/uploads"
 
 [http_service]
-  http_read_timeout = "300s"
+  http_read_timeout = "1800s"
   http_idle_timeout = "300s"
-  hard_timeout = "600s"
+  hard_timeout = "1800s"
   internal_port = 8080
   force_https = true
   auto_stop_machines = "stop"
@@ -24,9 +24,9 @@ primary_region = 'fra'
   # Remove 'processes' to avoid Fly.io splitting into multiple machines
 
 [[vm]]
-  memory = "4gb" # 2048 MB (max for shared-cpu-1x)
+  memory = "8gb"
   cpu_kind = "performance"
-  cpus = 1
+  cpus = 2
 
 [mounts]
   source = "easygifmaker_data"
