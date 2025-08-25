@@ -180,6 +180,16 @@ def create_app():
         # Create database tables if they don't exist
         db.create_all()
 
+    # Lightweight JSON health endpoint (distinct from gif blueprint one) to avoid SPA fallback
+    @app.route('/api/health', methods=['GET'])
+    def api_health():
+        return jsonify({
+            "status": "ok",
+            "service": "easygifmaker-backend",
+            "version": os.environ.get('GIT_COMMIT', 'main'),
+            "time": int(time.time())
+        })
+
     @app.errorhandler(RateLimitExceeded)
     def handle_rate_limit(e):
         return jsonify({"error": "Rate limit exceeded", "limit": str(e.description)}), 429
