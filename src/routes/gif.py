@@ -10,6 +10,7 @@ import requests
 import io
 import subprocess
 import shutil
+import json
 from urllib.parse import urlparse
 from celery import chain
 from src.celery_app import celery as celery_app
@@ -303,15 +304,71 @@ def convert_video_to_gif():
             return jsonify({"error": "File upload failed - video not saved properly"}), 400
         else:
             logging.info(f"[video-to-gif] Video file verified after upload: {video_path} (size: {os.path.getsize(video_path)} bytes)")
-        start_time = float(request.form.get("start_time", 0))
-        duration = float(request.form.get("duration", 10))
         fps = int(request.form.get("fps", 10))
         width = int(request.form.get("width", 480))
         height = int(request.form.get("height", 360))
         include_audio = request.form.get("include_audio", "false").lower() == "true"
+        brightness = float(request.form.get("brightness", 0))
+        contrast = float(request.form.get("contrast", 1))
 
-        logging.debug(f"[video-to-gif] video_path={video_path}, start_time={start_time}, duration={duration}, fps={fps}, width={width}, height={height}, session_dir={session_dir}, upload_folder={upload_folder}, include_audio={include_audio}")
-        task = convert_video_to_gif_task.apply_async([video_path, start_time, duration, fps, width, height, session_dir, upload_folder, include_audio], queue="fileops")
+        if brightness < -1.0 or brightness > 1.0:
+            return jsonify({"error": "Brightness must be between -1.0 and 1.0"}), 400
+        if contrast < 0 or contrast > 2.0:
+            return jsonify({"error": "Contrast must be between 0 and 2.0"}), 400
+
+        segments_raw = request.form.get("segments")
+        if segments_raw:
+            try:
+                segments = json.loads(segments_raw)
+            except Exception:
+                return jsonify({"error": "Invalid segments JSON"}), 400
+        else:
+            start_time = float(request.form.get("start_time", 0))
+            duration = float(request.form.get("duration", 10))
+            segments = [{"start": start_time, "end": start_time + duration}]
+
+        # Validate segments
+        try:
+            probe_cmd = [
+                "ffprobe", "-v", "error", "-show_entries", "format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1", video_path,
+            ]
+            probe_res = subprocess.run(probe_cmd, capture_output=True, text=True)
+            video_duration = float(probe_res.stdout.strip()) if probe_res.stdout else None
+        except Exception:
+            video_duration = None
+
+        if not isinstance(segments, list) or not segments:
+            return jsonify({"error": "Segments must be a non-empty list"}), 400
+
+        segments_sorted = sorted(segments, key=lambda s: s.get("start", 0))
+        cleaned_segments = []
+        prev_end = 0
+        for seg in segments_sorted:
+            try:
+                start = float(seg["start"])
+                end = float(seg["end"])
+            except Exception:
+                return jsonify({"error": "Each segment must have numeric start and end"}), 400
+            if start < 0 or end <= start:
+                return jsonify({"error": "Invalid segment timing"}), 400
+            if video_duration and end > video_duration:
+                return jsonify({"error": "Segment exceeds video length"}), 400
+            if start < prev_end:
+                return jsonify({"error": "Segments overlap"}), 400
+            cleaned_segments.append({"start": start, "end": end})
+            prev_end = end
+        segments = cleaned_segments
+
+        logging.debug(
+            f"[video-to-gif] video_path={video_path}, segments={segments}, fps={fps}, width={width}, height={height}, "
+            f"brightness={brightness}, contrast={contrast}, session_dir={session_dir}, upload_folder={upload_folder}, "
+            f"include_audio={include_audio}"
+        )
+        task = convert_video_to_gif_task.apply_async(
+            [video_path, segments, fps, width, height, session_dir, upload_folder, include_audio, brightness, contrast],
+            queue="fileops",
+        )
         logging.info(f"/video-to-gif returning task id: {task.id}")
         return jsonify({"task_id": task.id}), 202
     except Exception as e:
@@ -349,7 +406,8 @@ def resize_gif():
                         # If video, convert to GIF first, then resize
                         # Use default start_time=0, duration=10, fps=10 for conversion
                         gif_output_path = os.path.join(temp_dir, f"converted_{uuid.uuid4().hex}.gif")
-                        convert_task = convert_video_to_gif_task.s(abs_path, 0, 10, 10, width, height, temp_dir, upload_folder)
+                        segments = [{"start": 0, "end": 10}]
+                        convert_task = convert_video_to_gif_task.s(abs_path, segments, 10, width, height, temp_dir, upload_folder)
                         return chain(convert_task, resize_gif_task.s(width, height, maintain_aspect_ratio, temp_dir, upload_folder))()
                     else:
                         # Unsupported file type

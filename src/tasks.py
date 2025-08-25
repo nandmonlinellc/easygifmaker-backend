@@ -170,7 +170,7 @@ def orchestrate_gif_from_urls_task(self, urls, frame_duration, loop_count, base_
         raise
 
 @celery_app.task(bind=True)
-def convert_video_to_gif_task(self, video_path, start_time, duration, fps, width, height, output_dir, upload_folder, include_audio=False):
+def convert_video_to_gif_task(self, video_path, segments, fps, width, height, output_dir, upload_folder, include_audio=False, brightness=0.0, contrast=1.0):
     _task_start = time.time()
     try:
         # Check if input file exists with retry mechanism for distributed file systems
@@ -191,24 +191,36 @@ def convert_video_to_gif_task(self, video_path, start_time, duration, fps, width
                 else:
                     logging.error(f"[convert_video_to_gif_task] Directory does not exist: {dir_path}")
                 raise Exception(f"Input video file not found: {video_path}")
-        
+
         # Check file size to ensure it is not empty
         if os.path.getsize(video_path) == 0:
             logging.error(f"[convert_video_to_gif_task] Input video file is empty: {video_path}")
             raise Exception(f"Input video file is empty: {video_path}")
-        
+
         # Add machine debugging for task processing
         import socket
         hostname = socket.gethostname()
-        logging.info(f"[convert_video_to_gif_task] Task processing on machine: {hostname}")        
+        logging.info(f"[convert_video_to_gif_task] Task processing on machine: {hostname}")
         logging.info(f"[convert_video_to_gif_task] Processing video: {video_path} (size: {os.path.getsize(video_path)} bytes)")
+
+        # Build filter_complex for video segments
+        fc_parts = []
+        v_labels = []
+        for i, seg in enumerate(segments):
+            fc_parts.append(f"[0:v]trim=start={seg['start']}:end={seg['end']},setpts=PTS-STARTPTS[v{i}]")
+            v_labels.append(f"[v{i}]")
+        fc_parts.append("".join(v_labels) + f"concat=n={len(segments)}:v=1:a=0[v]")
+        filter_complex_v = ";".join(fc_parts)
+
+        vf_chain = f"fps={fps},scale={width}:{height}:flags=lanczos,eq=brightness={brightness}:contrast={contrast}"
+
         output_gif = os.path.join(output_dir, f"output_{uuid.uuid4().hex}.gif")
         cmd_gif = [
             "ffmpeg", "-i", video_path,
-            "-ss", str(start_time),
-            "-t", str(duration),
-            "-vf", f"fps={fps},scale={width}:{height}:flags=lanczos",
-            "-y", output_gif
+            "-filter_complex", filter_complex_v,
+            "-map", "[v]",
+            "-vf", vf_chain,
+            "-y", output_gif,
         ]
         logging.debug(f"[convert_video_to_gif_task] video_path={video_path}, output_gif={output_gif}, cmd={' '.join(cmd_gif)}")
         result_gif = subprocess.run(cmd_gif, capture_output=True, text=True)
@@ -221,6 +233,7 @@ def convert_video_to_gif_task(self, video_path, start_time, duration, fps, width
             logging.error(f"Output GIF missing or too small: {output_gif}")
             raise Exception("Output GIF missing or too small.")
         result = {"gif": os.path.relpath(output_gif, upload_folder)}
+
         # If include_audio, also generate an mp4 with audio (check for audio stream, add robust error handling)
         if include_audio:
             # Check if input video has an audio stream
@@ -238,13 +251,25 @@ def convert_video_to_gif_task(self, video_path, start_time, duration, fps, width
             if not has_audio:
                 logging.warning(f"Input video has no audio stream, skipping MP4 with audio generation: {video_path}")
             else:
+                fc_parts_av = []
+                v_lbls = []
+                a_lbls = []
+                for i, seg in enumerate(segments):
+                    fc_parts_av.append(f"[0:v]trim=start={seg['start']}:end={seg['end']},setpts=PTS-STARTPTS[v{i}]")
+                    fc_parts_av.append(f"[0:a]atrim=start={seg['start']}:end={seg['end']},asetpts=PTS-STARTPTS[a{i}]")
+                    v_lbls.append(f"[v{i}]")
+                    a_lbls.append(f"[a{i}]")
+                concat_inputs = ''.join([val for pair in zip(v_lbls, a_lbls) for val in pair])
+                fc_parts_av.append(f"{concat_inputs}concat=n={len(segments)}:v=1:a=1[v][a]")
+                filter_complex_av = ';'.join(fc_parts_av)
+
                 output_mp4 = os.path.join(output_dir, f"output_{uuid.uuid4().hex}.mp4")
                 cmd_mp4 = [
                     "ffmpeg", "-i", video_path,
-                    "-ss", str(start_time),
-                    "-t", str(duration),
-                    "-vf", f"scale={width}:{height}:flags=lanczos",
-                    "-c:v", "libx264", "-c:a", "aac", "-y", output_mp4
+                    "-filter_complex", filter_complex_av,
+                    "-map", "[v]", "-map", "[a]",
+                    "-vf", f"scale={width}:{height}:flags=lanczos,eq=brightness={brightness}:contrast={contrast}",
+                    "-c:v", "libx264", "-c:a", "aac", "-y", output_mp4,
                 ]
                 logging.debug(f"[convert_video_to_gif_task] output_mp4={output_mp4}, cmd={' '.join(cmd_mp4)}")
                 try:
@@ -259,6 +284,7 @@ def convert_video_to_gif_task(self, video_path, start_time, duration, fps, width
                     logging.error(f"FFmpeg mp4 conversion timed out for: {output_mp4}")
                 except Exception as e:
                     logging.error(f"Exception during ffmpeg mp4 conversion: {e}", exc_info=True)
+
         logging.info(f"[convert_video_to_gif_task] Successfully created GIF: {output_gif} (size: {os.path.getsize(output_gif)} bytes), include_audio={include_audio}")
         # metrics
         try:
