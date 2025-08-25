@@ -42,6 +42,15 @@ logging.debug(
     "[Celery Debug] result_backend: %s", celery.conf.result_backend
 )
 
+# --- Task registration ---
+# When the worker is launched with `-A src.celery_app.celery` Celery will import ONLY this file.
+# We must ensure task modules are imported so decorators register tasks. Explicit import avoids
+# relying on autodiscovery (which isn't configured with a package list here).
+try:
+    import src.tasks  # noqa: F401
+except Exception as e:  # pragma: no cover
+    logging.error("[Celery Debug] Failed to import src.tasks for task registration: %s", e)
+
 # Do not import the Flask app or tasks here: importing `src.main` or `src.tasks`
 # at module import time can create a circular import (celery_app -> main -> celery_app).
 # The Flask app will call `configure_celery(app, celery)` and import tasks after
