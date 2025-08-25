@@ -14,11 +14,11 @@ seo_pages = [
         "content_sections": [
             {
                 "title": "How to Convert MP4 to GIF in 3 Easy Steps",
-                "content": "Our online MP4 to GIF converter makes it simple to turn your videos into GIFs. 1. Upload your MP4 file. 2. Adjust settings like FPS, resolution, and start/end times. 3. Click \"Convert to GIF!\" and download your animated GIF in seconds. It's the easiest way to make a GIF from a video."
+                "content": "Our online MP4 to GIF converter makes it simple to turn your videos into GIFs. 1. Upload your MP4 file. 2. Adjust settings like FPS, resolution, and start/end times. 3. Click \"Convert to GIF!\" and download your animated GIF in seconds. Need to stitch multiple highlights? Use our multi‑segment tool to <a href='/convert/combine-video-clips-into-gif'>combine video clips into one GIF</a>."
             },
             {
                 "title": "Why Use Our Free MP4 to GIF Converter?",
-                "content": "EasyGIFMaker is the best online tool for converting MP4 to GIF. We offer high-quality conversions, fast processing, and a user-friendly interface. Plus, our tool is completely free and requires no software installation. Whether you're making a GIF for social media, a presentation, or just for fun, our MP4 to GIF converter has you covered."
+                "content": "EasyGIFMaker is the best online tool for converting MP4 to GIF. We offer high-quality conversions, fast processing, and a user-friendly interface. Plus, our tool is completely free and requires no software installation. Want multiple moments in one animation? Try the <a href='/convert/combine-video-clips-into-gif'>multi‑segment GIF stitcher</a>."
             }
         ],
         "faqs": [
@@ -33,6 +33,43 @@ seo_pages = [
         ]
     },
     {
+        "slug": "combine-video-clips-into-gif",
+        "title": "Combine Video Clips Into One GIF – Multi-Segment Video to GIF Converter",
+        "description": "Stitch multiple parts of a video (or several clips) into a single GIF. Add segments, adjust brightness & contrast, pick FPS, and optionally export MP4 with audio.",
+        "keywords": "combine video clips into gif, stitch clips gif, multi segment video to gif, merge video parts gif, video to gif with brightness contrast, gif maker multiple segments, gif with audio mp4 export",
+        "template": "seo_template.html",
+        "category": "convert",
+        "h1": "Combine Video Clips Into One GIF (Multi‑Segment Converter)",
+        "content_sections": [
+            {
+                "title": "How to Combine Multiple Video Segments Into One GIF",
+                "content": "Upload a video (or paste a link), add multiple time segments with start/end markers, reorder if needed, set FPS & size, optionally tweak brightness (-1 to 1) and contrast (0 to 3), then convert to a single seamless GIF."
+            },
+            {
+                "title": "Why Use a Multi-Segment GIF Converter?",
+                "content": "Highlight only the best moments without exporting and editing in external software. Tell a micro‑story, skip dead time, and keep file size efficient by including only engaging action."
+            }
+        ],
+        "faqs": [
+            {
+                "question": "Can I pick multiple parts of one video?",
+                "answer": "Yes. Add as many segments as you want; they are concatenated in the order listed before GIF generation."
+            },
+            {
+                "question": "How do brightness & contrast adjustments work?",
+                "answer": "Brightness ranges from -1 (darker) to 1 (brighter). Contrast ranges from 0 (flat) to 3 (high). Subtle tweaks (±0.1 brightness, 1.1–1.3 contrast) usually look best."
+            },
+            {
+                "question": "Can I export with sound?",
+                "answer": "GIFs have no audio, but you can request an MP4 with audio alongside the GIF for platforms that prefer video format."
+            },
+            {
+                "question": "What FPS is best for multi‑segment GIFs?",
+                "answer": "10–15fps balances smoothness and size for most highlight reels. Use 20fps only for fast motion; mixing very short segments at high FPS can bloat file size." 
+            }
+        ]
+    },
+    {
         "slug": "youtube-to-gif",
         "title": "YouTube to GIF Converter - Create GIFs from YouTube Videos",
         "description": "Convert any YouTube video to an animated GIF with our free online YouTube to GIF converter. Paste a YouTube URL, select the start and end times, and create a high-quality GIF in seconds. No watermarks, no registration.",
@@ -43,11 +80,11 @@ seo_pages = [
         "content_sections": [
             {
                 "title": "How to Convert a YouTube Video to a GIF",
-                "content": "Creating a GIF from a YouTube video is easy with our tool. 1. Copy the URL of the YouTube video you want to convert. 2. Paste the URL into our YouTube to GIF converter. 3. Select the start and end times for your GIF. 4. Click \"Create GIF!\" and download your animated GIF."
+                "content": "Creating a GIF from a YouTube video is easy with our tool. 1. Copy the URL of the YouTube video you want to convert. 2. Paste the URL into our YouTube to GIF converter. 3. Select the start and end times for your GIF (or add several highlight ranges with the <a href='/convert/combine-video-clips-into-gif'>multi‑segment converter</a>). 4. Click \"Create GIF!\" and download your animated GIF."
             },
             {
                 "title": "The Best Free YouTube to GIF Converter",
-                "content": "EasyGIFMaker is the best free tool for converting YouTube videos to GIFs. Our converter is fast, easy to use, and creates high-quality GIFs with no watermarks. Whether you want to make a reaction GIF, a meme, or a highlight from your favorite video, our YouTube to GIF converter is the perfect tool for the job."
+                "content": "EasyGIFMaker is the best free tool for converting YouTube videos to GIFs. Our converter is fast, easy to use, and creates high-quality GIFs with no watermarks. Need to capture multiple non‑contiguous moments? Use the <a href='/convert/combine-video-clips-into-gif'>multi‑segment GIF page</a>."
             }
         ],
         "faqs": [
@@ -72,11 +109,11 @@ seo_pages = [
         "content_sections": [
             {
                 "title": "How to Convert AVI to GIF",
-                "content": "Converting AVI to GIF is simple with our online tool. 1. Upload your AVI file. 2. Adjust the settings to your liking. 3. Click \"Convert to GIF!\" to start the conversion. 4. Download your new GIF."
+                "content": "Converting AVI to GIF is simple with our online tool. 1. Upload your AVI file. 2. Adjust the settings to your liking. 3. Click \"Convert to GIF!\" to start the conversion. 4. Download your new GIF. Want only the best moments from different parts? Try the <a href='/convert/combine-video-clips-into-gif'>multi‑segment clip combiner</a>."
             },
             {
                 "title": "Your Best Choice for AVI to GIF Conversion",
-                "content": "EasyGIFMaker provides a top-notch AVI to GIF conversion experience. Our tool is designed to be user-friendly and efficient, delivering high-quality GIFs every time. Convert your AVI files to GIFs for free, without the need for any software installation."
+                "content": "EasyGIFMaker provides a top-notch AVI to GIF conversion experience. Our tool is designed to be user-friendly and efficient, delivering high-quality GIFs every time. Need multiple highlights in one? Use the <a href='/convert/combine-video-clips-into-gif'>multi‑segment GIF converter</a>."
             }
         ],
         "faqs": [

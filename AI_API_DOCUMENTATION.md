@@ -68,7 +68,7 @@ Get comprehensive API documentation for AI agents.
 
 **POST** `/api/ai/convert`
 
-Convert a video file to GIF format.
+Convert a video file to GIF format. Supports multi-segment stitching, brightness & contrast adjustments, and optional MP4 export with audio.
 
 **Input Types:**
 - **URL**: Direct URL to video file
@@ -76,20 +76,41 @@ Convert a video file to GIF format.
 - **File Upload**: Multipart form file upload
 
 **Parameters:**
-- `fps` (optional): Frames per second (default: 10)
+- `fps` (optional): Frames per second (default: 10, recommended 10–15 for most GIFs)
 - `quality` (optional): high/medium/low (default: high)
 - `max_width` (optional): Maximum width in pixels (default: 480)
 - `max_height` (optional): Maximum height in pixels (default: 480)
-- `start_time` (optional): Start time in seconds (default: 0)
-- `duration` (optional): Duration in seconds
+- `start_time` (optional): Start time in seconds (default: 0) — ignored if `segments` provided
+- `duration` (optional): Duration in seconds — ignored if `segments` provided
+- `segments` (optional): Array of `{ "start": <seconds>, "end": <seconds> }` objects. When present, the listed ranges are concatenated in order before GIF creation. Example: `[ {"start":0,"end":2.5}, {"start":5,"end":7.2} ]`
+- `brightness` (optional): Float from -1.0 to 1.0 (default 0). Subtle tweaks (±0.1) recommended.
+- `contrast` (optional): Float from 0.0 to 2.0 (default 1). Typical enhancement range 1.1–1.3.
+- `include_audio` (optional): Boolean (default false). If true, an MP4 with original audio is produced alongside the GIF (GIF remains silent).
 
-**Example Request (URL):**
+**Example Request (URL, single segment):**
 ```json
 {
   "url": "https://example.com/video.mp4",
   "fps": 15,
   "quality": "high",
   "max_width": 640,
+  "max_height": 480
+}
+```
+
+**Example Request (URL, multi-segment with visual adjustments + MP4):**
+```json
+{
+  "url": "https://example.com/video.mp4",
+  "segments": [
+    { "start": 0, "end": 2.4 },
+    { "start": 5.0, "end": 7.0 }
+  ],
+  "fps": 12,
+  "brightness": 0.1,
+  "contrast": 1.2,
+  "include_audio": true,
+  "max_width": 480,
   "max_height": 480
 }
 ```
@@ -116,6 +137,8 @@ Convert a video file to GIF format.
   }
 }
 ```
+
+If `include_audio=true` a companion MP4 download will also be available when completed.
 
 ### 4. Create GIF from Images
 

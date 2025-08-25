@@ -203,23 +203,27 @@ def convert_video_to_gif_task(self, video_path, segments, fps, width, height, ou
         logging.info(f"[convert_video_to_gif_task] Task processing on machine: {hostname}")
         logging.info(f"[convert_video_to_gif_task] Processing video: {video_path} (size: {os.path.getsize(video_path)} bytes)")
 
-        # Build filter_complex for video segments
+        # Build filter_complex for video segments and apply fps/scale/eq AFTER concat to avoid -vf conflict
         fc_parts = []
         v_labels = []
         for i, seg in enumerate(segments):
-            fc_parts.append(f"[0:v]trim=start={seg['start']}:end={seg['end']},setpts=PTS-STARTPTS[v{i}]")
+            fc_parts.append(
+                f"[0:v]trim=start={seg['start']}:end={seg['end']},setpts=PTS-STARTPTS[v{i}]"
+            )
             v_labels.append(f"[v{i}]")
-        fc_parts.append("".join(v_labels) + f"concat=n={len(segments)}:v=1:a=0[v]")
+        # Concat segments (video only)
+        fc_parts.append("".join(v_labels) + f"concat=n={len(segments)}:v=1:a=0[vcat]")
+        # Apply fps + scale + eq to concatenated output -> [vout]
+        fc_parts.append(
+            f"[vcat]fps={fps},scale={width}:{height}:flags=lanczos,eq=brightness={brightness}:contrast={contrast}[vout]"
+        )
         filter_complex_v = ";".join(fc_parts)
-
-        vf_chain = f"fps={fps},scale={width}:{height}:flags=lanczos,eq=brightness={brightness}:contrast={contrast}"
 
         output_gif = os.path.join(output_dir, f"output_{uuid.uuid4().hex}.gif")
         cmd_gif = [
             "ffmpeg", "-i", video_path,
             "-filter_complex", filter_complex_v,
-            "-map", "[v]",
-            "-vf", vf_chain,
+            "-map", "[vout]",
             "-y", output_gif,
         ]
         logging.debug(f"[convert_video_to_gif_task] video_path={video_path}, output_gif={output_gif}, cmd={' '.join(cmd_gif)}")
@@ -255,20 +259,29 @@ def convert_video_to_gif_task(self, video_path, segments, fps, width, height, ou
                 v_lbls = []
                 a_lbls = []
                 for i, seg in enumerate(segments):
-                    fc_parts_av.append(f"[0:v]trim=start={seg['start']}:end={seg['end']},setpts=PTS-STARTPTS[v{i}]")
-                    fc_parts_av.append(f"[0:a]atrim=start={seg['start']}:end={seg['end']},asetpts=PTS-STARTPTS[a{i}]")
+                    fc_parts_av.append(
+                        f"[0:v]trim=start={seg['start']}:end={seg['end']},setpts=PTS-STARTPTS[v{i}]"
+                    )
+                    fc_parts_av.append(
+                        f"[0:a]atrim=start={seg['start']}:end={seg['end']},asetpts=PTS-STARTPTS[a{i}]"
+                    )
                     v_lbls.append(f"[v{i}]")
                     a_lbls.append(f"[a{i}]")
-                concat_inputs = ''.join([val for pair in zip(v_lbls, a_lbls) for val in pair])
-                fc_parts_av.append(f"{concat_inputs}concat=n={len(segments)}:v=1:a=1[v][a]")
+                concat_pairs = ''.join([val for pair in zip(v_lbls, a_lbls) for val in pair])
+                # Concat AV, then scale/eq video branch only afterwards to [vout]
+                fc_parts_av.append(
+                    f"{concat_pairs}concat=n={len(segments)}:v=1:a=1[vcat][acat]"
+                )
+                fc_parts_av.append(
+                    f"[vcat]scale={width}:{height}:flags=lanczos,eq=brightness={brightness}:contrast={contrast}[vout]"
+                )
                 filter_complex_av = ';'.join(fc_parts_av)
 
                 output_mp4 = os.path.join(output_dir, f"output_{uuid.uuid4().hex}.mp4")
                 cmd_mp4 = [
                     "ffmpeg", "-i", video_path,
                     "-filter_complex", filter_complex_av,
-                    "-map", "[v]", "-map", "[a]",
-                    "-vf", f"scale={width}:{height}:flags=lanczos,eq=brightness={brightness}:contrast={contrast}",
+                    "-map", "[vout]", "-map", "[acat]",
                     "-c:v", "libx264", "-c:a", "aac", "-y", output_mp4,
                 ]
                 logging.debug(f"[convert_video_to_gif_task] output_mp4={output_mp4}, cmd={' '.join(cmd_mp4)}")
