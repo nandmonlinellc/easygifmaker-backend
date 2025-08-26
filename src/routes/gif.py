@@ -194,9 +194,12 @@ def get_aspect_ratio_dimensions(width, height, aspect_ratio):
 def create_gif_from_images():
     """Create GIF from uploaded images or URLs"""
     try:
-        # Check if URLs are provided
-        urls = request.form.getlist("urls")
-        
+        # Robust error handling for form parsing
+        try:
+            urls = request.form.getlist("urls")
+        except Exception as form_err:
+            logging.error(f"Error parsing form data in /gif-maker: {form_err}", exc_info=True)
+            return jsonify({"error": "Malformed form data. Please check your upload format and try again."}), 400
 
         upload_folder = current_app.config['UPLOAD_FOLDER']
         session_dir = create_session_dir(upload_folder)
@@ -217,24 +220,30 @@ def create_gif_from_images():
                 logging.info(f"/gif-maker returning chord id as task_id: {getattr(chord_id, 'id', chord_id)}")
                 return jsonify({"task_id": getattr(chord_id, 'id', chord_id)}), 202
             else:
-                if "files" not in request.files:
-                    return jsonify({"error": "No files provided"}), 400
-                files = request.files.getlist("files")
+                try:
+                    if "files" not in request.files:
+                        return jsonify({"error": "No files provided"}), 400
+                    files = request.files.getlist("files")
+                except Exception as files_err:
+                    logging.error(f"Error parsing uploaded files in /gif-maker: {files_err}", exc_info=True)
+                    return jsonify({"error": "Malformed file upload. Please check your upload format and try again."}), 400
                 if not files or all(file.filename == "" for file in files):
                     return jsonify({"error": "No files selected"}), 400
                 for file in files:
                     if file and allowed_file(file.filename, ALLOWED_IMAGE_EXTENSIONS):
                         filename = secure_filename(file.filename)
                         file_path = os.path.join(session_dir, filename)
-                        file.save(file_path)
-                        # --- ADD THIS VERIFICATION ---
+                        try:
+                            file.save(file_path)
+                        except Exception as save_err:
+                            logging.error(f"Error saving uploaded file {filename}: {save_err}", exc_info=True)
+                            return jsonify({"error": f"Failed to save uploaded file: {filename}. Please try again."}), 500
                         if not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
                             logging.error(f"Failed to save uploaded file or file is empty: {file_path}")
                             if not os.listdir(session_dir):
                                 shutil.rmtree(session_dir, ignore_errors=True)
                             return jsonify({"error": f"Failed to save uploaded file: {filename}. Please try again."}), 500
                         logging.info(f"Successfully saved uploaded file: {file_path} (size: {os.path.getsize(file_path)} bytes)")
-                        # --- END ADDITION ---
                         images.append(file_path)
 
             if not images:
@@ -267,7 +276,6 @@ def create_gif_from_images():
         finally:
             # Do not delete session_dir here; let Celery task handle cleanup
             pass
-            
     except Exception as e:
         logging.error(f"Error in create_gif_from_images: {e}", exc_info=True)
         return jsonify({"error": "An unexpected error occurred while preparing the GIF."}), 500
