@@ -28,6 +28,7 @@ primary_region = 'fra'
   cpu_kind = "performance"
   cpus = 2
 
+
 [mounts]
-  source = "easygifmaker_data"
+  source = "easygifmaker_data_20gb"
   destination = "/data"
