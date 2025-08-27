@@ -36,14 +36,11 @@ echo "[Entrypoint] Starting Gunicorn (web server) on 0.0.0.0:${PORT_TO_BIND} in 
 gunicorn -b 0.0.0.0:${PORT_TO_BIND} \
     --timeout=1800 \
     --keep-alive=10 \
-    --max-requests=50 \
-    --max-requests-jitter=5 \
     --worker-class=sync \
     --workers=1 \
     --worker-connections=10 \
     --limit-request-line=8192 \
     --limit-request-field_size=16384 \
-    --max-requests-jitter=5 \
     --preload \
     src.main:app &
 
