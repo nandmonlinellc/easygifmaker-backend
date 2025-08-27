@@ -13,6 +13,7 @@ import yt_dlp
 import time
 import resource
 from src.utils.url_validation import validate_remote_url
+from src.utils.gcs_helpers import upload_file_to_gcs, download_file_from_gcs
 
 # Import the shared Celery application instance
 from src.celery_app import celery as celery_app
@@ -129,6 +130,31 @@ def download_file_from_url_task_helper(url, temp_dir, max_size):
         logging.error(f"Error downloading file: {e}", exc_info=True)
         raise ValueError("Download failed. Please check the URL and try again.")
 
+
+def _ensure_local_path(path: str, output_dir: str, upload_folder: str) -> str:
+    """Ensure the given path refers to a local file. If it's a GCS object name,
+    download it to the output_dir and return the local path."""
+    # If already absolute and exists, just return
+    if os.path.isabs(path) and os.path.exists(path):
+        return path
+
+    # First, see if it's a relative path within upload_folder
+    candidate = os.path.join(upload_folder, path) if not os.path.isabs(path) else path
+    if os.path.exists(candidate):
+        return candidate
+
+    # Otherwise treat it as a GCS object name
+    bucket_name = os.environ.get("GCS_UPLOAD_BUCKET") or os.environ.get("GCS_BUCKET_NAME")
+    if bucket_name:
+        local_path = os.path.join(output_dir, os.path.basename(path))
+        try:
+            download_file_from_gcs(bucket_name, path, local_path)
+            return local_path
+        except Exception as e:
+            logging.error(f"Failed to download {path} from GCS: {e}")
+    # Fallback to candidate even if missing; downstream will error appropriately
+    return candidate
+
 @celery_app.task(bind=True)
 def orchestrate_gif_from_urls_task(self, urls, frame_duration, loop_count, base_output_dir, upload_folder, max_content_length, quality_level="high"):
     """
@@ -173,6 +199,8 @@ def orchestrate_gif_from_urls_task(self, urls, frame_duration, loop_count, base_
 def convert_video_to_gif_task(self, video_path, segments, fps, width, height, output_dir, upload_folder, include_audio=False, brightness=0.0, contrast=1.0):
     _task_start = time.time()
     try:
+        video_path = _ensure_local_path(video_path, output_dir, upload_folder)
+
         # Check if input file exists with retry mechanism for distributed file systems
         max_retries = 3
         for attempt in range(max_retries):
@@ -236,7 +264,8 @@ def convert_video_to_gif_task(self, video_path, segments, fps, width, height, ou
         if not os.path.exists(output_gif) or os.path.getsize(output_gif) < 1024:
             logging.error(f"Output GIF missing or too small: {output_gif}")
             raise Exception("Output GIF missing or too small.")
-        result = {"gif": os.path.relpath(output_gif, upload_folder)}
+        gif_rel = os.path.relpath(output_gif, upload_folder)
+        result = gif_rel
 
         # If include_audio, also generate an mp4 with audio (check for audio stream, add robust error handling)
         if include_audio:
@@ -290,7 +319,7 @@ def convert_video_to_gif_task(self, video_path, segments, fps, width, height, ou
                     logging.debug(f"[convert_video_to_gif_task] ffmpeg mp4 stdout: {result_mp4.stdout}")
                     logging.debug(f"[convert_video_to_gif_task] ffmpeg mp4 stderr: {result_mp4.stderr}")
                     if result_mp4.returncode == 0 and os.path.exists(output_mp4) and os.path.getsize(output_mp4) > 1024:
-                        result["mp4"] = os.path.relpath(output_mp4, upload_folder)
+                        result = {"gif": gif_rel, "mp4": os.path.relpath(output_mp4, upload_folder)}
                     else:
                         logging.warning(f"Failed to generate mp4 with audio: {output_mp4}. FFmpeg stderr: {result_mp4.stderr}")
                 except subprocess.TimeoutExpired:
@@ -526,10 +555,8 @@ def resize_gif_task(self, gif_path, width, height, maintain_aspect_ratio, output
     _task_start = time.time()
     try:
         logging.info(f"[resize_gif_task] gif_path={gif_path}, width={width}, height={height}, maintain_aspect_ratio={maintain_aspect_ratio}, output_dir={output_dir}, upload_folder={upload_folder}")
-        
-        # Ensure gif_path is absolute
-        if not os.path.isabs(gif_path):
-            gif_path = os.path.join(upload_folder, gif_path)
+
+        gif_path = _ensure_local_path(gif_path, output_dir, upload_folder)
 
         if not os.path.exists(gif_path):
             logging.error(f"[resize_gif_task] File does not exist: {gif_path}")
@@ -607,10 +634,8 @@ def crop_gif_task(self, gif_path, x, y, width, height, aspect_ratio, output_dir,
     _task_start = time.time()
     try:
         logging.info(f"[crop_gif_task] gif_path={gif_path}, x={x}, y={y}, width={width}, height={height}, aspect_ratio={aspect_ratio}, output_dir={output_dir}, upload_folder={upload_folder}")
-        
-        # Ensure gif_path is absolute
-        if not os.path.isabs(gif_path):
-            gif_path = os.path.join(upload_folder, gif_path)
+
+        gif_path = _ensure_local_path(gif_path, output_dir, upload_folder)
 
         if not os.path.exists(gif_path):
             logging.error(f"[crop_gif_task] File does not exist: {gif_path}")
@@ -701,10 +726,8 @@ def crop_gif_task(self, gif_path, x, y, width, height, aspect_ratio, output_dir,
 def optimize_gif_task(self, gif_path, quality, colors, lossy, dither, optimize_level, output_dir, upload_folder):
     _task_start = time.time()
     try:
-        # Ensure gif_path is absolute
-        if not os.path.isabs(gif_path):
-            gif_path = os.path.join(upload_folder, gif_path)
-        
+        gif_path = _ensure_local_path(gif_path, output_dir, upload_folder)
+
         logging.info(f"[optimize_gif_task] gif_path={gif_path}, quality={quality}, colors={colors}, lossy={lossy}, dither={dither}, optimize_level={optimize_level}, output_dir={output_dir}, upload_folder={upload_folder}")
         if not os.path.exists(gif_path):
             logging.error(f"[optimize_gif_task] File does not exist: {gif_path}")
@@ -864,15 +887,13 @@ def reverse_gif_task(self, gif_path, output_dir, upload_folder):
     _task_start = time.time()
     try:
         logging.info(f"[reverse_gif_task] gif_path={gif_path}, output_dir={output_dir}, upload_folder={upload_folder}")
-        
-        # Handle case where gif_path comes from a chained task (relative path)
-        if not os.path.isabs(gif_path):
-            gif_path = os.path.join(upload_folder, gif_path)
-            
+
+        gif_path = _ensure_local_path(gif_path, output_dir, upload_folder)
+
         if not os.path.exists(gif_path):
             logging.error(f"[reverse_gif_task] File does not exist: {gif_path}")
             raise FileNotFoundError(f"Input GIF for reverse does not exist: {gif_path}")
-            
+
         logging.info(f"[reverse_gif_task] File size: {os.path.getsize(gif_path)} bytes")
         
         # Check if it's a GIF file
@@ -961,11 +982,7 @@ def reverse_gif_task(self, gif_path, output_dir, upload_folder):
 @celery_app.task(bind=True)
 def add_text_to_gif_task(self, gif_path, text, font_size, color, font_family, stroke_color, stroke_width, horizontal_align, vertical_align, offset_x, offset_y, start_frame, end_frame, animation_style, output_dir, upload_folder):
     _task_start = time.time()
-    # Resolve gif_path to absolute path if not already
-    if not os.path.isabs(gif_path):
-        abs_gif_path = os.path.join(upload_folder, gif_path)
-    else:
-        abs_gif_path = gif_path
+    abs_gif_path = _ensure_local_path(gif_path, output_dir, upload_folder)
 
     # Utility to convert hex color to RGB tuple
     def hex_to_rgb(value):
@@ -1271,11 +1288,7 @@ def add_text_to_gif_task(self, gif_path, text, font_size, color, font_family, st
 @celery_app.task(bind=True)
 def add_text_layers_to_gif_task(self, gif_path, layers, output_dir, upload_folder):
     _task_start = time.time()
-    # gif_path may be absolute or relative
-    if not os.path.isabs(gif_path):
-        abs_gif_path = os.path.join(upload_folder, gif_path)
-    else:
-        abs_gif_path = gif_path
+    abs_gif_path = _ensure_local_path(gif_path, output_dir, upload_folder)
 
     def hex_to_rgb(value):
         value = value.lstrip('#')
@@ -1576,16 +1589,26 @@ def handle_upload_task(self, url, output_dir, upload_folder, max_content_length)
     try:
         logging.info(f"[handle_upload_task] url={url}, output_dir={output_dir}, upload_folder={upload_folder}, max_content_length={max_content_length}")
         video_path = download_file_from_url_task_helper(url, output_dir, max_content_length)
-        if os.path.exists(video_path):
-            logging.info(f"[handle_upload_task] Downloaded file: {video_path}, size: {os.path.getsize(video_path)} bytes")
-            import mimetypes
-            mime_type, _ = mimetypes.guess_type(video_path)
-        else:
+        if not os.path.exists(video_path):
             logging.error(f"[handle_upload_task] Downloaded file does not exist: {video_path}")
             raise FileNotFoundError(f"Downloaded file does not exist: {video_path}")
-        # For handle_upload, we just need to return the path to the downloaded file
-        # The frontend will then request this file via a separate endpoint.
-        return video_path  # Return absolute path instead of relative path
+
+        logging.info(f"[handle_upload_task] Downloaded file: {video_path}, size: {os.path.getsize(video_path)} bytes")
+
+        bucket_name = os.environ.get("GCS_UPLOAD_BUCKET") or os.environ.get("GCS_BUCKET_NAME")
+        object_name = os.path.basename(video_path)
+        if bucket_name:
+            # Prefix with a directory for organization
+            object_name = f"uploads/{uuid.uuid4().hex}_{object_name}"
+            upload_file_to_gcs(video_path, bucket_name, object_name)
+            try:
+                os.remove(video_path)
+            except Exception as e:
+                logging.warning(f"[handle_upload_task] Failed to delete temp file {video_path}: {e}")
+            return object_name
+
+        # Fallback: return the local path if no bucket configured
+        return video_path
     except Exception as e:
         logging.error(f"Error in handle_upload_task: {e}", exc_info=True)
         # Let Celery handle the failure state. Re-raise the exception.

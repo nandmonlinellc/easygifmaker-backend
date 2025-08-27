@@ -404,23 +404,16 @@ def resize_gif():
                 max_content_length = current_app.config['MAX_CONTENT_LENGTH']
                 # Download file from URL
                 download_task = handle_upload_task.s(url, temp_dir, upload_folder, max_content_length)
-                def process_downloaded_file(rel_path):
-                    abs_path = os.path.join(upload_folder, rel_path)
-                    ext = os.path.splitext(abs_path)[1].lower()
+                def process_downloaded_file(object_name):
+                    ext = os.path.splitext(object_name)[1].lower()
                     if ext == '.gif':
-                        # If GIF, resize directly
-                        return resize_gif_task.s(abs_path, width, height, maintain_aspect_ratio, temp_dir, upload_folder)()
+                        return resize_gif_task.s(object_name, width, height, maintain_aspect_ratio, temp_dir, upload_folder)()
                     elif ext in ['.mp4', '.mov', '.webm', '.avi', '.mkv', '.flv']:
-                        # If video, convert to GIF first, then resize
-                        # Use default start_time=0, duration=10, fps=10 for conversion
-                        gif_output_path = os.path.join(temp_dir, f"converted_{uuid.uuid4().hex}.gif")
                         segments = [{"start": 0, "end": 10}]
-                        convert_task = convert_video_to_gif_task.s(abs_path, segments, 10, width, height, temp_dir, upload_folder)
+                        convert_task = convert_video_to_gif_task.s(object_name, segments, 10, width, height, temp_dir, upload_folder)
                         return chain(convert_task, resize_gif_task.s(width, height, maintain_aspect_ratio, temp_dir, upload_folder))()
                     else:
-                        # Unsupported file type
                         raise Exception(f"Unsupported file type for resize: {ext}")
-                # Start the download task, then on success, call process_downloaded_file
                 result = download_task.apply_async([], queue="fileops")
                 result.then(process_downloaded_file)
                 logging.info(f"/resize (url) returning task id: {result.id}")
