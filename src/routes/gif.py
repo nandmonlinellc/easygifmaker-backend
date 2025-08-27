@@ -1,5 +1,5 @@
 
-from flask import Blueprint, request, jsonify, send_file, current_app, send_from_directory, url_for
+from flask import Blueprint, request, jsonify, send_file, current_app, url_for, redirect
 from flask_cors import cross_origin
 from werkzeug.utils import secure_filename
 import os
@@ -11,6 +11,7 @@ import io
 import subprocess
 import shutil
 import json
+from datetime import timedelta
 from urllib.parse import urlparse
 from celery import chain
 from src.celery_app import celery as celery_app
@@ -839,117 +840,73 @@ def get_task_status(task_id):
 
 @gif_bp.route("/download-result/<path:filename>", methods=["GET"])
 def download_result(filename):
-    """Endpoint to download the processed file."""
-    # Ensure the filename is secure and within the UPLOAD_FOLDER
-    # This is a critical security point. Do NOT allow arbitrary file paths.
-    # The filename should be a full path returned by the task, and we should
-    # verify it's within the allowed UPLOAD_FOLDER.
-    
-    # Example of securing the path:
-    base_upload_folder = current_app.config.get('UPLOAD_FOLDER')
-    full_path = os.path.join(base_upload_folder, filename)
-    
-    # Prevent directory traversal attacks
-    if not os.path.abspath(full_path).startswith(os.path.abspath(base_upload_folder)):
-        return jsonify({"error": "Invalid file path"}), 400
-
-    if not os.path.exists(full_path):
-        return jsonify({"error": "File not found"}), 404
+    """Endpoint to download the processed file from Google Cloud Storage."""
+    bucket_name = current_app.config.get("GCS_BUCKET_NAME")
+    if not bucket_name:
+        return jsonify({"error": "GCS bucket not configured"}), 500
 
     try:
-        # Allow inline playing for common video and image formats for preview
-        inline_extensions = {'.mp4', '.webm', '.mov', '.gif', '.png', '.jpg', '.jpeg', '.webp'}
-        _, ext = os.path.splitext(filename)
-        as_attachment = ext.lower() not in inline_extensions
+        from google.cloud import storage  # type: ignore
+        from google.auth.exceptions import GoogleAuthError  # type: ignore
+        from google.api_core.exceptions import NotFound  # type: ignore
+    except ImportError:
+        logging.error("google-cloud-storage library is required but not installed")
+        return jsonify({"error": "Storage service unavailable"}), 500
 
-        return send_file(full_path, as_attachment=as_attachment, download_name=os.path.basename(full_path))
+    try:
+        client = storage.Client()
+        bucket = client.bucket(bucket_name)
+        blob = bucket.blob(filename)
+        if not blob.exists():
+            return jsonify({"error": "File not found"}), 404
+        url = blob.generate_signed_url(expiration=timedelta(minutes=15), method="GET", version="v4")
+        return redirect(url)
+    except GoogleAuthError as e:
+        logging.error(f"GCS credentials error: {e}")
+        return jsonify({"error": "Invalid or missing GCS credentials"}), 500
+    except NotFound:
+        return jsonify({"error": "File not found"}), 404
     except Exception as e:
-        logging.error(f"Error serving file {full_path}: {e}", exc_info=True)
+        logging.error(f"Error serving file {filename} from GCS: {e}", exc_info=True)
         return jsonify({"error": "Could not serve file"}), 500
-    finally:
-        # Optionally, delete the file after it's served.
-        # This depends on your cleanup strategy. The main cleanup task will eventually get it.
-        # If you want immediate deletion, uncomment:
-        # try:
-        #     if os.path.isfile(full_path):
-        #         os.remove(full_path)
-        #         logging.info(f"Deleted served file: {full_path}")
-        #     elif os.path.isdir(full_path): # If the task returned a directory
-        #         shutil.rmtree(full_path, ignore_errors=True)
-        #         logging.info(f"Deleted served directory: {full_path}")
-        # except Exception as e:
-        #     logging.error(f"Error deleting served file/dir {full_path}: {e}")
-        pass
 
 @gif_bp.route("/download/<path:filename>", methods=["GET"])
 def download_gif(filename):
-    """
-    Download a generated GIF file
-    Expected filename format: 'tmp_folder/output_hash.gif'
-    """
+    """Download a generated GIF or MP4 file from Google Cloud Storage."""
     try:
-        # Security validation
-        if '..' in filename or filename.startswith('/'):
-            return jsonify({'error': 'Invalid filename'}), 400
-        upload_folder = current_app.config.get('UPLOAD_FOLDER')
-        if not upload_folder:
-            return jsonify({'error': 'Server configuration error'}), 500
-        full_path = os.path.join(upload_folder, filename)
-        # Security: Ensure path is within upload folder
-        if not os.path.abspath(full_path).startswith(os.path.abspath(upload_folder)):
-            return jsonify({'error': 'Access denied'}), 403
-        # DEBUG LOGGING
-        logging.info(f"Download request: {filename}")
-        logging.info(f"Full path: {full_path}")
-        logging.info(f"File exists: {os.path.exists(full_path)}")
-        if os.path.exists(full_path):
-            file_size = os.path.getsize(full_path)
-            logging.info(f"File size: {file_size} bytes")
-        else:
-            logging.error(f"File not found: {full_path}")
-            return jsonify({'error': 'File not found'}), 404
-        
-        # Check file extension to determine if it's a GIF or MP4
-        file_extension = os.path.splitext(filename)[1].lower()
-        
-        if file_extension == '.gif':
-            # Validate GIF files by checking the first few bytes
-            try:
-                with open(full_path, 'rb') as f:
-                    header = f.read(6)
-                    if not header.startswith(b'GIF87a') and not header.startswith(b'GIF89a'):
-                        logging.error(f"File is not a valid GIF: {full_path}")
-                        return jsonify({'error': 'Invalid GIF file'}), 400
-            except Exception as e:
-                logging.error(f"Error reading file header: {e}")
-                return jsonify({'error': 'File read error'}), 500
-            
-            # Serve GIF file
-            response = send_from_directory(
-                upload_folder,
-                filename,
-                mimetype='image/gif',
-                as_attachment=False
-            )
-        elif file_extension == '.mp4':
-            # For MP4 files, just check if file exists (no header validation needed)
-            response = send_from_directory(
-                upload_folder,
-                filename,
-                mimetype='video/mp4',
-                as_attachment=True  # Force download for MP4 files
-            )
-        else:
-            logging.error(f"Unsupported file type: {file_extension}")
-            return jsonify({'error': 'Unsupported file type'}), 400
-        
-        # Add additional headers to ensure proper download
-        response.headers['Cache-Control'] = 'no-cache'
-        
-        return response
+        if ".." in filename or filename.startswith("/"):
+            return jsonify({"error": "Invalid filename"}), 400
+
+        if not filename.lower().endswith((".gif", ".mp4")):
+            return jsonify({"error": "Unsupported file type"}), 400
+
+        bucket_name = current_app.config.get("GCS_BUCKET_NAME")
+        if not bucket_name:
+            return jsonify({"error": "Server configuration error"}), 500
+
+        try:
+            from google.cloud import storage  # type: ignore
+            from google.auth.exceptions import GoogleAuthError  # type: ignore
+            from google.api_core.exceptions import NotFound  # type: ignore
+        except ImportError:
+            logging.error("google-cloud-storage library is required but not installed")
+            return jsonify({"error": "Storage service unavailable"}), 500
+
+        client = storage.Client()
+        bucket = client.bucket(bucket_name)
+        blob = bucket.blob(filename)
+        if not blob.exists():
+            return jsonify({"error": "File not found"}), 404
+        url = blob.generate_signed_url(expiration=timedelta(minutes=15), method="GET", version="v4")
+        return redirect(url)
+    except GoogleAuthError as e:
+        logging.error(f"GCS credentials error: {e}")
+        return jsonify({"error": "Invalid or missing GCS credentials"}), 500
+    except NotFound:
+        return jsonify({"error": "File not found"}), 404
     except Exception as e:
         logging.error(f"Download error for {filename}: {e}", exc_info=True)
-        return jsonify({'error': 'Download failed'}), 500
+        return jsonify({"error": "Download failed"}), 500
 
 @gif_bp.route('/debug-file/<path:filename>')
 def debug_file_info(filename):
