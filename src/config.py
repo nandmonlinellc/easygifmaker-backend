@@ -17,6 +17,8 @@ class Config:
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL', 'sqlite:///app.db')
     # Use local directory for uploads in development, Fly.io Volume in production
     UPLOAD_FOLDER = os.environ.get('UPLOAD_FOLDER', os.path.join(os.getcwd(), 'uploads'))
+    # Storage bucket config (used by routes)
+    GCS_BUCKET_NAME = os.environ.get('GCS_UPLOAD_BUCKET') or os.environ.get('GCS_BUCKET_NAME')
 
     # Temporary file cleanup settings
     TEMP_FILE_MAX_AGE = int(os.environ.get('TEMP_FILE_MAX_AGE', 7200))  # seconds

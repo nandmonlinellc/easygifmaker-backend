@@ -138,6 +138,14 @@ def _ensure_local_path(path: str, output_dir: str, upload_folder: str) -> str:
     if os.path.isabs(path) and os.path.exists(path):
         return path
 
+    # Normalize common legacy absolute prefix to current upload folder
+    legacy_root = "/data/uploads"
+    if os.path.isabs(path) and not os.path.exists(path) and path.startswith(legacy_root):
+        rem = os.path.relpath(path, legacy_root)
+        remapped = os.path.join(upload_folder, rem)
+        if os.path.exists(remapped):
+            return remapped
+
     # First, see if it's a relative path within upload_folder
     candidate = os.path.join(upload_folder, path) if not os.path.isabs(path) else path
     if os.path.exists(candidate):
@@ -146,9 +154,20 @@ def _ensure_local_path(path: str, output_dir: str, upload_folder: str) -> str:
     # Otherwise treat it as a GCS object name
     bucket_name = os.environ.get("GCS_UPLOAD_BUCKET") or os.environ.get("GCS_BUCKET_NAME")
     if bucket_name:
+        # Derive an object key without leading slash
+        if os.path.isabs(path):
+            if path.startswith(upload_folder):
+                object_key = os.path.relpath(path, upload_folder)
+            elif path.startswith(legacy_root):
+                object_key = os.path.relpath(path, legacy_root)
+            else:
+                object_key = os.path.basename(path)
+        else:
+            object_key = path
+
         local_path = os.path.join(output_dir, os.path.basename(path))
         try:
-            download_file_from_gcs(bucket_name, path, local_path)
+            download_file_from_gcs(bucket_name, object_key, local_path)
             return local_path
         except Exception as e:
             logging.error(f"Failed to download {path} from GCS: {e}")
@@ -162,6 +181,8 @@ def orchestrate_gif_from_urls_task(self, urls, frame_duration, loop_count, base_
     """
     _task_start = time.time()
     try:
+        # Ensure base directory exists (worker may be on a different machine)
+        os.makedirs(base_output_dir, exist_ok=True)
         # Create a single temporary directory for all downloads within this orchestration
         shared_download_dir = tempfile.mkdtemp(dir=base_output_dir)
         logging.info(f"Created shared_download_dir: {shared_download_dir} for orchestration.")
@@ -199,6 +220,7 @@ def orchestrate_gif_from_urls_task(self, urls, frame_duration, loop_count, base_
 def convert_video_to_gif_task(self, video_path, segments, fps, width, height, output_dir, upload_folder, include_audio=False, brightness=0.0, contrast=1.0):
     _task_start = time.time()
     try:
+        os.makedirs(output_dir, exist_ok=True)
         video_path = _ensure_local_path(video_path, output_dir, upload_folder)
 
         # Check if input file exists with retry mechanism for distributed file systems
@@ -264,8 +286,25 @@ def convert_video_to_gif_task(self, video_path, segments, fps, width, height, ou
         if not os.path.exists(output_gif) or os.path.getsize(output_gif) < 1024:
             logging.error(f"Output GIF missing or too small: {output_gif}")
             raise Exception("Output GIF missing or too small.")
+        # Capture size before any upload/cleanup
+        try:
+            _gif_size_bytes = os.path.getsize(output_gif)
+        except Exception:
+            _gif_size_bytes = None
+
         gif_rel = os.path.relpath(output_gif, upload_folder)
-        result = gif_rel
+        # Optionally upload GIF to GCS
+        bucket_name = os.environ.get("GCS_UPLOAD_BUCKET") or os.environ.get("GCS_BUCKET_NAME")
+        if bucket_name:
+            try:
+                upload_file_to_gcs(output_gif, bucket_name, gif_rel.replace("\\", "/"))
+                try:
+                    os.remove(output_gif)
+                except Exception as de:
+                    logging.warning(f"[convert_video_to_gif_task] cleanup failed: {de}")
+            except Exception as ue:
+                logging.error(f"[convert_video_to_gif_task] Failed to upload GIF to GCS: {ue}")
+        result = gif_rel.replace("\\", "/") if bucket_name else gif_rel
 
         # If include_audio, also generate an mp4 with audio (check for audio stream, add robust error handling)
         if include_audio:
@@ -319,7 +358,18 @@ def convert_video_to_gif_task(self, video_path, segments, fps, width, height, ou
                     logging.debug(f"[convert_video_to_gif_task] ffmpeg mp4 stdout: {result_mp4.stdout}")
                     logging.debug(f"[convert_video_to_gif_task] ffmpeg mp4 stderr: {result_mp4.stderr}")
                     if result_mp4.returncode == 0 and os.path.exists(output_mp4) and os.path.getsize(output_mp4) > 1024:
-                        result = {"gif": gif_rel, "mp4": os.path.relpath(output_mp4, upload_folder)}
+                        mp4_rel = os.path.relpath(output_mp4, upload_folder)
+                        if bucket_name:
+                            try:
+                                upload_file_to_gcs(output_mp4, bucket_name, mp4_rel.replace("\\", "/"))
+                                try:
+                                    os.remove(output_mp4)
+                                except Exception as de:
+                                    logging.warning(f"[convert_video_to_gif_task] mp4 cleanup failed: {de}")
+                            except Exception as ue:
+                                logging.error(f"[convert_video_to_gif_task] Failed to upload MP4 to GCS: {ue}")
+                        result = {"gif": (gif_rel.replace("\\", "/") if bucket_name else gif_rel),
+                                  "mp4": (mp4_rel.replace("\\", "/") if bucket_name else mp4_rel)}
                     else:
                         logging.warning(f"Failed to generate mp4 with audio: {output_mp4}. FFmpeg stderr: {result_mp4.stderr}")
                 except subprocess.TimeoutExpired:
@@ -327,7 +377,7 @@ def convert_video_to_gif_task(self, video_path, segments, fps, width, height, ou
                 except Exception as e:
                     logging.error(f"Exception during ffmpeg mp4 conversion: {e}", exc_info=True)
 
-        logging.info(f"[convert_video_to_gif_task] Successfully created GIF: {output_gif} (size: {os.path.getsize(output_gif)} bytes), include_audio={include_audio}")
+        logging.info(f"[convert_video_to_gif_task] Successfully created GIF: {output_gif} (size: {_gif_size_bytes} bytes), include_audio={include_audio}")
         # metrics
         try:
             peak_kb = getattr(resource.getrusage(resource.RUSAGE_SELF),'ru_maxrss',0)
@@ -509,6 +559,24 @@ def create_gif_from_images_task(self, image_paths, frame_duration=None, loop_cou
 
         logging.info(f"High-quality GIF created at: {output_path} ({os.path.getsize(output_path)} bytes)")
         rel = os.path.relpath(output_path, upload_folder)
+
+        # If a GCS bucket is configured, upload the output and return the object key
+        try:
+            bucket_name = os.environ.get("GCS_UPLOAD_BUCKET") or os.environ.get("GCS_BUCKET_NAME")
+            if bucket_name:
+                object_name = rel.replace("\\", "/")
+                try:
+                    upload_file_to_gcs(output_path, bucket_name, object_name)
+                    # Remove local file after upload to save space
+                    try:
+                        os.remove(output_path)
+                    except Exception as de:
+                        logging.warning(f"Could not delete local output after upload: {de}")
+                    rel = object_name
+                except Exception as ue:
+                    logging.error(f"Failed to upload output to GCS: {ue}")
+        except Exception as be:
+            logging.warning(f"Bucket upload skipped due to error: {be}")
         try:
             peak_kb = getattr(resource.getrusage(resource.RUSAGE_SELF),'ru_maxrss',0)
             jm = JobMetric(tool='gif-maker', task_id=self.request.id if getattr(self,'request',None) else None,
@@ -554,6 +622,7 @@ def create_gif_from_images_task(self, image_paths, frame_duration=None, loop_cou
 def resize_gif_task(self, gif_path, width, height, maintain_aspect_ratio, output_dir, upload_folder):
     _task_start = time.time()
     try:
+        os.makedirs(output_dir, exist_ok=True)
         logging.info(f"[resize_gif_task] gif_path={gif_path}, width={width}, height={height}, maintain_aspect_ratio={maintain_aspect_ratio}, output_dir={output_dir}, upload_folder={upload_folder}")
 
         gif_path = _ensure_local_path(gif_path, output_dir, upload_folder)
@@ -595,6 +664,22 @@ def resize_gif_task(self, gif_path, width, height, maintain_aspect_ratio, output
             raise Exception("Output GIF missing or too small.")
         logging.info(f"[resize_gif_task] Successfully created resized GIF: {output_path} (size: {os.path.getsize(output_path)} bytes)")
         rel = os.path.relpath(output_path, upload_folder)
+        # Optionally upload to GCS
+        try:
+            bucket_name = os.environ.get("GCS_UPLOAD_BUCKET") or os.environ.get("GCS_BUCKET_NAME")
+            if bucket_name:
+                object_name = rel.replace("\\", "/")
+                try:
+                    upload_file_to_gcs(output_path, bucket_name, object_name)
+                    try:
+                        os.remove(output_path)
+                    except Exception as de:
+                        logging.warning(f"[resize_gif_task] cleanup failed: {de}")
+                    rel = object_name
+                except Exception as ue:
+                    logging.error(f"[resize_gif_task] Failed to upload to GCS: {ue}")
+        except Exception as be:
+            logging.warning(f"[resize_gif_task] Bucket upload skipped: {be}")
         try:
             peak_kb = getattr(resource.getrusage(resource.RUSAGE_SELF),'ru_maxrss',0)
             jm = JobMetric(tool='resize', task_id=self.request.id if getattr(self,'request',None) else None,
@@ -633,6 +718,7 @@ def resize_gif_task(self, gif_path, width, height, maintain_aspect_ratio, output
 def crop_gif_task(self, gif_path, x, y, width, height, aspect_ratio, output_dir, upload_folder):
     _task_start = time.time()
     try:
+        os.makedirs(output_dir, exist_ok=True)
         logging.info(f"[crop_gif_task] gif_path={gif_path}, x={x}, y={y}, width={width}, height={height}, aspect_ratio={aspect_ratio}, output_dir={output_dir}, upload_folder={upload_folder}")
 
         gif_path = _ensure_local_path(gif_path, output_dir, upload_folder)
@@ -688,6 +774,22 @@ def crop_gif_task(self, gif_path, x, y, width, height, aspect_ratio, output_dir,
         else:
             logging.info(f"[crop_gif_task] Output GIF size: {os.path.getsize(output_path)} bytes")
         rel = os.path.relpath(output_path, upload_folder)
+        # Optionally upload to GCS
+        try:
+            bucket_name = os.environ.get("GCS_UPLOAD_BUCKET") or os.environ.get("GCS_BUCKET_NAME")
+            if bucket_name:
+                object_name = rel.replace("\\", "/")
+                try:
+                    upload_file_to_gcs(output_path, bucket_name, object_name)
+                    try:
+                        os.remove(output_path)
+                    except Exception as de:
+                        logging.warning(f"[crop_gif_task] cleanup failed: {de}")
+                    rel = object_name
+                except Exception as ue:
+                    logging.error(f"[crop_gif_task] Failed to upload to GCS: {ue}")
+        except Exception as be:
+            logging.warning(f"[crop_gif_task] Bucket upload skipped: {be}")
         try:
             peak_kb = getattr(resource.getrusage(resource.RUSAGE_SELF),'ru_maxrss',0)
             jm = JobMetric(tool='crop', task_id=self.request.id if getattr(self,'request',None) else None,
@@ -726,6 +828,7 @@ def crop_gif_task(self, gif_path, x, y, width, height, aspect_ratio, output_dir,
 def optimize_gif_task(self, gif_path, quality, colors, lossy, dither, optimize_level, output_dir, upload_folder):
     _task_start = time.time()
     try:
+        os.makedirs(output_dir, exist_ok=True)
         gif_path = _ensure_local_path(gif_path, output_dir, upload_folder)
 
         logging.info(f"[optimize_gif_task] gif_path={gif_path}, quality={quality}, colors={colors}, lossy={lossy}, dither={dither}, optimize_level={optimize_level}, output_dir={output_dir}, upload_folder={upload_folder}")
@@ -848,6 +951,22 @@ def optimize_gif_task(self, gif_path, quality, colors, lossy, dither, optimize_l
         logging.info(f"[optimize_gif_task] Compression ratio: {compression_ratio:.1f}%")
         
         rel = os.path.relpath(output_path, upload_folder)
+        # Optionally upload to GCS
+        try:
+            bucket_name = os.environ.get("GCS_UPLOAD_BUCKET") or os.environ.get("GCS_BUCKET_NAME")
+            if bucket_name:
+                object_name = rel.replace("\\", "/")
+                try:
+                    upload_file_to_gcs(output_path, bucket_name, object_name)
+                    try:
+                        os.remove(output_path)
+                    except Exception as de:
+                        logging.warning(f"[optimize_gif_task] cleanup failed: {de}")
+                    rel = object_name
+                except Exception as ue:
+                    logging.error(f"[optimize_gif_task] Failed to upload to GCS: {ue}")
+        except Exception as be:
+            logging.warning(f"[optimize_gif_task] Bucket upload skipped: {be}")
         try:
             peak_kb = getattr(resource.getrusage(resource.RUSAGE_SELF),'ru_maxrss',0)
             jm = JobMetric(tool='optimize', task_id=self.request.id if getattr(self,'request',None) else None,
@@ -886,6 +1005,7 @@ def optimize_gif_task(self, gif_path, quality, colors, lossy, dither, optimize_l
 def reverse_gif_task(self, gif_path, output_dir, upload_folder):
     _task_start = time.time()
     try:
+        os.makedirs(output_dir, exist_ok=True)
         logging.info(f"[reverse_gif_task] gif_path={gif_path}, output_dir={output_dir}, upload_folder={upload_folder}")
 
         gif_path = _ensure_local_path(gif_path, output_dir, upload_folder)
@@ -930,7 +1050,6 @@ def reverse_gif_task(self, gif_path, output_dir, upload_folder):
             duration=durations,
             loop=gif.info.get('loop', 0)
         )
-        
         if not os.path.exists(output_path) or os.path.getsize(output_path) < 1024:
             logging.error(f"[reverse_gif_task] Output GIF missing or too small: {output_path}")
             raise Exception("Output GIF missing or too small.")
@@ -938,6 +1057,22 @@ def reverse_gif_task(self, gif_path, output_dir, upload_folder):
         logging.info(f"[reverse_gif_task] Successfully created reversed GIF: {output_path} (size: {os.path.getsize(output_path)} bytes)")
         
         rel = os.path.relpath(output_path, upload_folder)
+        # Optionally upload to GCS
+        try:
+            bucket_name = os.environ.get("GCS_UPLOAD_BUCKET") or os.environ.get("GCS_BUCKET_NAME")
+            if bucket_name:
+                object_name = rel.replace("\\", "/")
+                try:
+                    upload_file_to_gcs(output_path, bucket_name, object_name)
+                    try:
+                        os.remove(output_path)
+                    except Exception as de:
+                        logging.warning(f"[reverse_gif_task] cleanup failed: {de}")
+                    rel = object_name
+                except Exception as ue:
+                    logging.error(f"[reverse_gif_task] Failed to upload to GCS: {ue}")
+        except Exception as be:
+            logging.warning(f"[reverse_gif_task] Bucket upload skipped: {be}")
         try:
             peak_kb = getattr(resource.getrusage(resource.RUSAGE_SELF), 'ru_maxrss', 0)
             jm = JobMetric(tool='reverse', task_id=self.request.id if getattr(self, 'request', None) else None,
@@ -982,6 +1117,7 @@ def reverse_gif_task(self, gif_path, output_dir, upload_folder):
 @celery_app.task(bind=True)
 def add_text_to_gif_task(self, gif_path, text, font_size, color, font_family, stroke_color, stroke_width, horizontal_align, vertical_align, offset_x, offset_y, start_frame, end_frame, animation_style, output_dir, upload_folder):
     _task_start = time.time()
+    os.makedirs(output_dir, exist_ok=True)
     abs_gif_path = _ensure_local_path(gif_path, output_dir, upload_folder)
 
     # Utility to convert hex color to RGB tuple
@@ -1227,6 +1363,22 @@ def add_text_to_gif_task(self, gif_path, text, font_size, color, font_family, st
             logging.error(f"[add_text_to_gif_task] Output GIF was not created: {output_path}")
             raise Exception("Output GIF was not created.")
         rel = os.path.relpath(output_path, upload_folder)
+        # Optionally upload to GCS
+        try:
+            bucket_name = os.environ.get("GCS_UPLOAD_BUCKET") or os.environ.get("GCS_BUCKET_NAME")
+            if bucket_name:
+                object_name = rel.replace("\\", "/")
+                try:
+                    upload_file_to_gcs(output_path, bucket_name, object_name)
+                    try:
+                        os.remove(output_path)
+                    except Exception as de:
+                        logging.warning(f"[add_text_to_gif_task] cleanup failed: {de}")
+                    rel = object_name
+                except Exception as ue:
+                    logging.error(f"[add_text_to_gif_task] Failed to upload to GCS: {ue}")
+        except Exception as be:
+            logging.warning(f"[add_text_to_gif_task] Bucket upload skipped: {be}")
         # Record metrics (best-effort)
         try:
             out_size = os.path.getsize(output_path)
@@ -1288,6 +1440,7 @@ def add_text_to_gif_task(self, gif_path, text, font_size, color, font_family, st
 @celery_app.task(bind=True)
 def add_text_layers_to_gif_task(self, gif_path, layers, output_dir, upload_folder):
     _task_start = time.time()
+    os.makedirs(output_dir, exist_ok=True)
     abs_gif_path = _ensure_local_path(gif_path, output_dir, upload_folder)
 
     def hex_to_rgb(value):
@@ -1527,6 +1680,22 @@ def add_text_layers_to_gif_task(self, gif_path, layers, output_dir, upload_folde
             logging.error(f"[add_text_layers_to_gif_task] Output GIF was not created: {output_path}")
             raise Exception("Output GIF was not created.")
         rel = os.path.relpath(output_path, upload_folder)
+        # Optionally upload to GCS
+        try:
+            bucket_name = os.environ.get("GCS_UPLOAD_BUCKET") or os.environ.get("GCS_BUCKET_NAME")
+            if bucket_name:
+                object_name = rel.replace("\\", "/")
+                try:
+                    upload_file_to_gcs(output_path, bucket_name, object_name)
+                    try:
+                        os.remove(output_path)
+                    except Exception as de:
+                        logging.warning(f"[add_text_layers_to_gif_task] cleanup failed: {de}")
+                    rel = object_name
+                except Exception as ue:
+                    logging.error(f"[add_text_layers_to_gif_task] Failed to upload to GCS: {ue}")
+        except Exception as be:
+            logging.warning(f"[add_text_layers_to_gif_task] Bucket upload skipped: {be}")
         # Record metrics (best-effort)
         try:
             out_size = os.path.getsize(output_path)

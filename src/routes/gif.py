@@ -1,5 +1,5 @@
 
-from flask import Blueprint, request, jsonify, send_file, current_app, url_for, redirect
+from flask import Blueprint, request, jsonify, send_file, current_app, url_for, redirect, Response
 from flask_cors import cross_origin
 from werkzeug.utils import secure_filename
 import os
@@ -865,33 +865,82 @@ def download_result(filename):
 
 @gif_bp.route("/download/<path:filename>", methods=["GET"])
 def download_gif(filename):
-    """Download a generated GIF or MP4 file from Google Cloud Storage."""
+    """Download or proxy-stream a generated file from GCS.
+    - Default: redirect to a signed GCS URL
+    - With ?proxy=1: stream bytes via backend to avoid client-side CORS
+    """
+    if ".." in filename or filename.startswith("/"):
+        return jsonify({"error": "Invalid filename"}), 400
+
+    if not filename.lower().endswith((".gif", ".mp4")):
+        return jsonify({"error": "Unsupported file type"}), 400
+
+    bucket_name = current_app.config.get("GCS_BUCKET_NAME")
+    if not bucket_name:
+        return jsonify({"error": "Server configuration error"}), 500
+
+    # Import deps
     try:
-        if ".." in filename or filename.startswith("/"):
-            return jsonify({"error": "Invalid filename"}), 400
+        from google.cloud import storage  # type: ignore
+        from google.auth.exceptions import GoogleAuthError  # type: ignore
+        from google.api_core.exceptions import NotFound  # type: ignore
+    except ImportError:
+        logging.error("google-cloud-storage library is required but not installed")
+        return jsonify({"error": "Storage service unavailable"}), 500
 
-        if not filename.lower().endswith((".gif", ".mp4")):
-            return jsonify({"error": "Unsupported file type"}), 400
-
-        bucket_name = current_app.config.get("GCS_BUCKET_NAME")
-        if not bucket_name:
-            return jsonify({"error": "Server configuration error"}), 500
-
-        try:
-            from google.cloud import storage  # type: ignore
-            from google.auth.exceptions import GoogleAuthError  # type: ignore
-            from google.api_core.exceptions import NotFound  # type: ignore
-        except ImportError:
-            logging.error("google-cloud-storage library is required but not installed")
-            return jsonify({"error": "Storage service unavailable"}), 500
-
+    proxy = request.args.get("proxy") in ("1", "true", "yes")
+    try:
         client = storage.Client()
         bucket = client.bucket(bucket_name)
         blob = bucket.blob(filename)
         if not blob.exists():
             return jsonify({"error": "File not found"}), 404
-        url = blob.generate_signed_url(expiration=timedelta(minutes=15), method="GET", version="v4")
-        return redirect(url)
+
+        if not proxy:
+            url = blob.generate_signed_url(expiration=timedelta(minutes=15), method="GET", version="v4")
+            return redirect(url)
+
+        # Proxy path: stream a signed URL via requests to the client
+        signed = blob.generate_signed_url(expiration=timedelta(minutes=15), method="GET", version="v4")
+        try:
+            r = requests.get(signed, stream=True, timeout=30)
+        except Exception as re:
+            logging.error(f"Failed to fetch from GCS signed URL: {re}")
+            return jsonify({"error": "Upstream fetch failed"}), 502
+        if r.status_code >= 400:
+            logging.error(f"Upstream GCS returned {r.status_code} for {filename}")
+            return jsonify({"error": "Upstream error"}), 502
+
+        def generate():
+            try:
+                for chunk in r.iter_content(chunk_size=64 * 1024):
+                    if chunk:
+                        yield chunk
+            finally:
+                try:
+                    r.close()
+                except Exception:
+                    pass
+
+        # Infer content type
+        ct = r.headers.get("Content-Type")
+        if not ct:
+            low = filename.lower()
+            if low.endswith(".gif"): ct = "image/gif"
+            elif low.endswith(".mp4"): ct = "video/mp4"
+            else: ct = "application/octet-stream"
+
+        headers = {
+            "Content-Type": ct,
+            "Content-Disposition": f"inline; filename=\"{os.path.basename(filename)}\"",
+        }
+        cl = r.headers.get("Content-Length")
+        if cl:
+            headers["Content-Length"] = cl
+        # Allow simple caching for downloads
+        headers["Cache-Control"] = "private, max-age=300"
+
+        return Response(generate(), headers=headers, status=200)
     except GoogleAuthError as e:
         logging.error(f"GCS credentials error: {e}")
         return jsonify({"error": "Invalid or missing GCS credentials"}), 500

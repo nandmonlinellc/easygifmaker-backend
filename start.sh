@@ -18,6 +18,7 @@ echo "[Entrypoint] Env snapshot:"
 echo "  FLASK_ENV=${FLASK_ENV:-}"
 echo "  PORT=${PORT:-8080}"
 echo "  REDIS_URL=${REDIS_URL:-}"
+echo "  UPLOAD_FOLDER=${UPLOAD_FOLDER:-/tmp/uploads}"
 
 # If REDIS_URL is set but CELERY_* are not, set them to REDIS_URL
 if [ -n "${REDIS_URL:-}" ]; then
@@ -30,6 +31,21 @@ if [ -n "${REDIS_URL:-}" ]; then
 fi
 echo "  CELERY_BROKER_URL=${CELERY_BROKER_URL:-}"
 echo "  CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND:-}"
+
+
+# Ensure upload folder exists (ephemeral)
+mkdir -p "${UPLOAD_FOLDER:-/tmp/uploads}"
+
+# If service account JSON is provided via env, materialize it to a file
+if [ -n "${GCP_SERVICE_ACCOUNT_JSON:-}" ]; then
+    mkdir -p /secrets
+    echo "$GCP_SERVICE_ACCOUNT_JSON" > /secrets/gcs-credentials.json
+    chmod 600 /secrets/gcs-credentials.json
+    export GOOGLE_APPLICATION_CREDENTIALS="/secrets/gcs-credentials.json"
+    echo "[Entrypoint] Wrote GCS credentials to /secrets/gcs-credentials.json"
+else
+    echo "[Entrypoint] No inline GCP credentials found (GCP_SERVICE_ACCOUNT_JSON unset)"
+fi
 
 PORT_TO_BIND=${PORT:-8080}
 echo "[Entrypoint] Starting Gunicorn (web server) on 0.0.0.0:${PORT_TO_BIND} in background..."

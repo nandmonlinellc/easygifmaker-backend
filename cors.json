@@ -1,0 +1,8 @@
+[
+  {
+    "origin": ["https://easygifmaker.com", "https://www.easygifmaker.com"],
+    "method": ["GET", "HEAD", "OPTIONS"],
+    "responseHeader": ["Content-Type", "Content-Length", "Content-Range", "Accept-Ranges"],
+    "maxAgeSeconds": 3600
+  }
+]

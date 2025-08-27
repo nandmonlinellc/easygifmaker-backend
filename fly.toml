@@ -7,7 +7,9 @@ primary_region = 'fra'
 # Optionally specify build options here
 
 [env]
-  UPLOAD_FOLDER = "/data/uploads"
+  UPLOAD_FOLDER = "/tmp/uploads"
+  GCS_BUCKET_NAME = "easygifmaker-uploads"
+  GOOGLE_APPLICATION_CREDENTIALS = "/secrets/gcs-credentials.json"
 
 [http_service]
   http_read_timeout = "1800s"
@@ -29,6 +31,4 @@ primary_region = 'fra'
   cpus = 2
 
 
-[mounts]
-  source = "easygifmaker_data_20gb"
-  destination = "/data"
+
