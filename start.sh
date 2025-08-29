@@ -48,27 +48,50 @@ else
 fi
 
 PORT_TO_BIND=${PORT:-8080}
-echo "[Entrypoint] Starting Gunicorn (web server) on 0.0.0.0:${PORT_TO_BIND} in background..."
-gunicorn -b 0.0.0.0:${PORT_TO_BIND} \
-    --timeout=1800 \
-    --keep-alive=10 \
-    --worker-class=sync \
-    --workers=1 \
-    --worker-connections=10 \
-    --limit-request-line=8192 \
-    --limit-request-field_size=16384 \
-    --preload \
-    src.main:app &
+echo "[Entrypoint] Preparing to start processes on port ${PORT_TO_BIND}..."
 
-sleep 2
-echo "[Entrypoint] Starting Celery worker (background task processor)..."
-# Concurrency = 1 to match 1 shared CPU; memory cap ~700MB per child; recycle after 10 tasks
-celery -A src.celery_app.celery worker \
-    --loglevel=INFO \
-    --concurrency=1 \
-    --max-memory-per-child=1500000 \
-    --max-tasks-per-child=10 \
-    --time-limit=600 \
-    --soft-time-limit=300 \
-    -Ofair \
-    -Q fileops,default
+# Decide whether Celery should run based on availability of a broker URL
+SHOULD_RUN_CELERY=false
+if [ -n "${CELERY_BROKER_URL:-}" ] || [ -n "${REDIS_URL:-}" ]; then
+    SHOULD_RUN_CELERY=true
+fi
+
+if [ "$SHOULD_RUN_CELERY" = true ]; then
+    echo "[Entrypoint] Starting Gunicorn in background..."
+    gunicorn -b 0.0.0.0:${PORT_TO_BIND} \
+        --timeout=1800 \
+        --keep-alive=10 \
+        --worker-class=sync \
+        --workers=1 \
+        --worker-connections=10 \
+        --limit-request-line=8192 \
+        --limit-request-field_size=16384 \
+        --preload \
+        src.main:app &
+
+    sleep 2
+    echo "[Entrypoint] Starting Celery worker (foreground)..."
+    # Concurrency = 1 to match 1 shared CPU; memory cap ~1.5GB per child; recycle after 10 tasks
+    exec celery -A src.celery_app.celery worker \
+        --loglevel=INFO \
+        --concurrency=1 \
+        --max-memory-per-child=1500000 \
+        --max-tasks-per-child=10 \
+        --time-limit=600 \
+        --soft-time-limit=300 \
+        -Ofair \
+        -Q fileops,default
+else
+    echo "[Entrypoint] No Celery broker configured. Running web server only."
+    # Run Gunicorn in the foreground to keep the container alive
+    exec gunicorn -b 0.0.0.0:${PORT_TO_BIND} \
+        --timeout=1800 \
+        --keep-alive=10 \
+        --worker-class=sync \
+        --workers=1 \
+        --worker-connections=10 \
+        --limit-request-line=8192 \
+        --limit-request-field_size=16384 \
+        --preload \
+        src.main:app
+fi
