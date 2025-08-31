@@ -107,11 +107,16 @@ def prepare_layers(layers: List[Dict], fps: float, n_frames: int, temp_dir: str)
             'offset_y': int(l.get('offset_y', 0)),
             'start_frame': start_frame,
             'end_frame': end_frame,
+            'start_time_s': float(start_time),
+            'end_time_s': (float(end_time_val) if end_time_val not in (None, '') else None),
             'animation_style': l.get('animation_style', 'none'),
             'max_width_ratio': float(l.get('max_width_ratio', 0.95)),
             'line_height': float(l.get('line_height', 1.2)),
             'auto_fit': bool(l.get('auto_fit', True)),
         }
+        # If the route already resolved and saved a font file, preserve it
+        if l.get('font_path'):
+            entry['font_path'] = l['font_path']
         font_url = l.get('font_url')
         if font_url:
             try:

@@ -37,6 +37,7 @@ from src.tasks import (
     reverse_gif_task,
     download_file_from_url_task_helper,
 )
+from src.utils.gcs_helpers import upload_file_to_gcs
 
 from src.utils.gif_helpers import (
     resolve_input_gif,
@@ -245,7 +246,19 @@ def create_gif_from_images():
                                 shutil.rmtree(session_dir, ignore_errors=True)
                             return jsonify({"error": f"Failed to save uploaded file: {filename}. Please try again."}), 500
                         logging.info(f"Successfully saved uploaded file: {file_path} (size: {os.path.getsize(file_path)} bytes)")
-                        images.append(file_path)
+                        # If GCS bucket is configured, upload the input and pass the object key to the task
+                        bucket_name = current_app.config.get("GCS_BUCKET_NAME")
+                        if bucket_name:
+                            try:
+                                rel = os.path.relpath(file_path, upload_folder).replace("\\", "/")
+                                upload_file_to_gcs(file_path, bucket_name, rel)
+                                images.append(rel)
+                                logging.info(f"Uploaded input image to GCS as {rel}")
+                            except Exception as ue:
+                                logging.warning(f"Failed to upload input image to GCS, using local path: {ue}")
+                                images.append(file_path)
+                        else:
+                            images.append(file_path)
 
             if not images:
                 return jsonify({"error": "No valid images or URLs provided"}), 400
@@ -721,6 +734,24 @@ def add_text_layers_to_gif():
         except Exception:
             return jsonify({"error": "Invalid layers JSON"}), 400
 
+        # Support custom per-layer font file uploads using `font_field`
+        # Each layer may reference an uploaded file field name; save to temp_dir and set font_path
+        try:
+            for idx, layer in enumerate(layers):
+                field = layer.get('font_field')
+                if field and field in request.files:
+                    font_file = request.files[field]
+                    if font_file and font_file.filename:
+                        # Basic validation on extension
+                        ext = os.path.splitext(font_file.filename.lower())[1]
+                        if ext in ('.ttf', '.otf', '.ttc', '.woff', '.woff2'):
+                            safe_name = secure_filename(f"layer{idx}_{font_file.filename}")
+                            font_path = os.path.join(temp_dir, safe_name)
+                            font_file.save(font_path)
+                            layer['font_path'] = font_path
+        except Exception as fe:
+            logging.warning(f"/add-text-layers: font upload processing failed: {fe}")
+
         prepared_layers = prepare_layers(layers, fps, n_frames, temp_dir)
 
         upload_folder = current_app.config['UPLOAD_FOLDER']
@@ -875,6 +906,18 @@ def download_gif(filename):
     if not filename.lower().endswith((".gif", ".mp4")):
         return jsonify({"error": "Unsupported file type"}), 400
 
+    # Local fallback: if the file exists on local disk, serve it directly.
+    try:
+        upload_folder = current_app.config.get("UPLOAD_FOLDER")
+        if upload_folder:
+            local_path = os.path.join(upload_folder, filename)
+            if os.path.exists(local_path) and os.path.getsize(local_path) > 0:
+                mimetype = "image/gif" if filename.lower().endswith(".gif") else "video/mp4"
+                logging.info(f"Serving local file fallback: {local_path}")
+                return send_file(local_path, mimetype=mimetype, as_attachment=False, download_name=os.path.basename(local_path))
+    except Exception as le:
+        logging.warning(f"Local fallback check failed for {filename}: {le}")
+
     bucket_name = current_app.config.get("GCS_BUCKET_NAME")
     if not bucket_name:
         return jsonify({"error": "Server configuration error"}), 500
@@ -893,61 +936,61 @@ def download_gif(filename):
         client = storage.Client()
         bucket = client.bucket(bucket_name)
         blob = bucket.blob(filename)
-        if not blob.exists():
-            return jsonify({"error": "File not found"}), 404
+        try:
+            if not blob.exists():
+                return jsonify({"error": "File not found"}), 404
+        except Exception as ex_exists:
+            # Handle permission issues explicitly for clearer diagnostics
+            from google.api_core.exceptions import Forbidden  # type: ignore
+            if isinstance(exists := ex_exists, Forbidden):
+                logging.error(f"GCS permission denied on exists() for {bucket_name}/{filename}: {exists}")
+                return jsonify({"error": "Storage access denied"}), 403
+            raise
 
         if not proxy:
+            # Generate a signed URL for direct client redirect (requires sign permission)
             url = blob.generate_signed_url(expiration=timedelta(minutes=15), method="GET", version="v4")
             return redirect(url)
 
-        # Proxy path: stream a signed URL via requests to the client
-        signed = blob.generate_signed_url(expiration=timedelta(minutes=15), method="GET", version="v4")
+        # Proxy path: stream directly from GCS using authenticated client (no signing needed)
         try:
-            r = requests.get(signed, stream=True, timeout=30)
-        except Exception as re:
-            logging.error(f"Failed to fetch from GCS signed URL: {re}")
-            return jsonify({"error": "Upstream fetch failed"}), 502
-        if r.status_code >= 400:
-            logging.error(f"Upstream GCS returned {r.status_code} for {filename}")
-            return jsonify({"error": "Upstream error"}), 502
+            blob.reload()
+        except NotFound:
+            return jsonify({"error": "File not found"}), 404
+        except Exception as me:
+            logging.error(f"Failed to load metadata for {bucket_name}/{filename}: {me}")
+            return jsonify({"error": "Storage metadata fetch failed"}), 500
 
         def generate():
             try:
-                for chunk in r.iter_content(chunk_size=64 * 1024):
-                    if chunk:
+                with blob.open("rb") as f:
+                    while True:
+                        chunk = f.read(64 * 1024)
+                        if not chunk:
+                            break
                         yield chunk
-            finally:
-                try:
-                    r.close()
-                except Exception:
-                    pass
+            except Exception as re:
+                logging.error(f"Stream read failed for {bucket_name}/{filename}: {re}")
+                return
 
-        # Infer content type
-        ct = r.headers.get("Content-Type")
-        if not ct:
-            low = filename.lower()
-            if low.endswith(".gif"): ct = "image/gif"
-            elif low.endswith(".mp4"): ct = "video/mp4"
-            else: ct = "application/octet-stream"
-
+        # Content-type and length from blob metadata
+        ct = blob.content_type or ("video/mp4" if filename.lower().endswith(".mp4") else "image/gif")
         headers = {
             "Content-Type": ct,
             "Content-Disposition": f"inline; filename=\"{os.path.basename(filename)}\"",
+            "Cache-Control": "private, max-age=300",
         }
-        cl = r.headers.get("Content-Length")
-        if cl:
-            headers["Content-Length"] = cl
-        # Allow simple caching for downloads
-        headers["Cache-Control"] = "private, max-age=300"
+        if blob.size is not None:
+            headers["Content-Length"] = str(blob.size)
 
         return Response(generate(), headers=headers, status=200)
     except GoogleAuthError as e:
-        logging.error(f"GCS credentials error: {e}")
+        logging.error(f"GCS credentials error for {bucket_name}/{filename}: {e}")
         return jsonify({"error": "Invalid or missing GCS credentials"}), 500
     except NotFound:
         return jsonify({"error": "File not found"}), 404
     except Exception as e:
-        logging.error(f"Download error for {filename}: {e}", exc_info=True)
+        logging.error(f"Download error for {bucket_name}/{filename}: {e}", exc_info=True)
         return jsonify({"error": "Download failed"}), 500
 
 @gif_bp.route('/debug-file/<path:filename>')

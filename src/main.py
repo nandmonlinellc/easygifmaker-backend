@@ -1,6 +1,7 @@
 import os
 import sys
 import logging
+from werkzeug.exceptions import ClientDisconnected
 import traceback
 
 import time
@@ -182,6 +183,7 @@ def create_app():
 
     # Lightweight JSON health endpoint (distinct from gif blueprint one) to avoid SPA fallback
     @app.route('/api/health', methods=['GET'])
+    @limiter.exempt
     def api_health():
         return jsonify({
             "status": "ok",
@@ -193,6 +195,17 @@ def create_app():
     @app.errorhandler(RateLimitExceeded)
     def handle_rate_limit(e):
         return jsonify({"error": "Rate limit exceeded", "limit": str(e.description)}), 429
+
+    # Treat client disconnects as non-fatal and avoid noisy tracebacks
+    @app.errorhandler(ClientDisconnected)
+    def handle_client_disconnect(e):
+        try:
+            path = request.path
+        except Exception:
+            path = "<unknown>"
+        logging.warning(f"Client disconnected during request: {path}")
+        # 499 = Client Closed Request (non-standard but widely used)
+        return jsonify({"error": "client_disconnected"}), 499
 
     # -------------------- Admin routes (defined BEFORE catch-all) --------------------
     @app.route('/admin/indexnow/submit', methods=['POST'])

@@ -435,7 +435,17 @@ def create_gif_from_images_task(self, image_paths, frame_duration=None, loop_cou
 
         settings = quality_settings.get(quality_level, quality_settings["high"])
 
-        for idx, path in enumerate(image_paths):
+        # Resolve each input path to a local file (supports GCS object keys when running on different instances)
+        resolved_paths = []
+        for p in image_paths:
+            try:
+                rp = _ensure_local_path(p, output_dir, upload_folder)
+                resolved_paths.append(rp)
+            except Exception as e:
+                logging.error(f"Failed to resolve path {p}: {e}")
+                resolved_paths.append(p)
+
+        for idx, path in enumerate(resolved_paths):
             exists = os.path.exists(path)
             if not exists:
                 for _ in range(5):
@@ -867,7 +877,7 @@ def optimize_gif_task(self, gif_path, quality, colors, lossy, dither, optimize_l
         logging.info(f"[optimize_gif_task] Quality-based settings: colors={optimized_colors}, lossy={optimized_lossy}, level={optimized_level}")
         
         try:
-            # Enhanced gifsicle optimization
+            # Enhanced gifsicle optimization (drop unsupported flags)
             cmd = ["gifsicle", f"--optimize={optimized_level}", f"--colors={optimized_colors}"]
             
             # Add lossy compression if specified
@@ -880,9 +890,6 @@ def optimize_gif_task(self, gif_path, quality, colors, lossy, dither, optimize_l
             
             # Add additional optimizations for better compression
             cmd.extend(["--no-extensions", "--no-comments", "--no-names"])
-            
-            # Add frame optimization for better compression
-            cmd.extend(["--optimize-frames"])
             
             # Add interlace optimization
             cmd.extend(["--interlace"])
@@ -1570,6 +1577,7 @@ def add_text_layers_to_gif_task(self, gif_path, layers, output_dir, upload_folde
         if is_animated:
             total_frames = gif.n_frames
             step = max(1, int((total_frames + MAX_GIF_FRAMES - 1) // MAX_GIF_FRAMES))
+            cumulative_ms = 0
             for frame_idx in range(0, total_frames, step):
                 gif.seek(frame_idx)
                 frame_img = gif.copy().convert('RGBA')
@@ -1577,9 +1585,20 @@ def add_text_layers_to_gif_task(self, gif_path, layers, output_dir, upload_folde
                     new_size = (max(1, int(frame_img.width * scale)), max(1, int(frame_img.height * scale)))
                     frame_img = frame_img.resize(new_size, Image.Resampling.LANCZOS)
                 draw = ImageDraw.Draw(frame_img)
+                # Time (seconds) at the start of this frame
+                frame_start_s = cumulative_ms / 1000.0
                 for l in normalized_layers:
-                    if frame_idx < l['start_frame'] or frame_idx > l['end_frame']:
-                        continue
+                    # Prefer time-based gating if available; fallback to frame indices
+                    if 'start_time_s' in l:
+                        st = float(l.get('start_time_s') or 0.0)
+                        et = l.get('end_time_s')
+                        if frame_start_s < st:
+                            continue
+                        if et is not None and frame_start_s > float(et):
+                            continue
+                    else:
+                        if frame_idx < int(l.get('start_frame', 0)) or frame_idx > int(l.get('end_frame', total_frames-1)):
+                            continue
                     # Font: try custom font via temporary path? If font_field is provided, it refers to a file saved by Flask in temp upload dir.
                     font_size = int(l.get('font_size', 24))
                     if l.get('font_path') and os.path.exists(l['font_path']):
@@ -1614,12 +1633,21 @@ def add_text_layers_to_gif_task(self, gif_path, layers, output_dir, upload_folde
                             block_w = max((draw.textlength(line, font=font) for line in lines), default=0)
                             block_h = max(1, len(lines)) * line_height
                             guard += 1
+                    # Scale offsets if the frame was downscaled so placement remains consistent
+                    eff_off_x = int(int(l.get('offset_x', 0)) * (scale if scale < 1.0 else 1.0))
+                    eff_off_y = int(int(l.get('offset_y', 0)) * (scale if scale < 1.0 else 1.0))
                     pos = calculate_position(frame_img.width, frame_img.height, block_w, block_h,
                                               l.get('horizontal_align', 'center'), l.get('vertical_align', 'middle'),
-                                              int(l.get('offset_x', 0)), int(l.get('offset_y', 0)))
+                                              eff_off_x, eff_off_y)
                     apply_animation(draw, lines, pos, font, l['color'], l['stroke_color'], int(l.get('stroke_width', 0)),
                                     l.get('animation_style', 'none'), frame_idx, int(l['start_frame']), int(l['end_frame']), line_height)
                 frames.append(frame_img.convert('RGB'))
+                # Advance cumulative time by this frame's duration
+                try:
+                    dur_ms = int(gif.info.get('duration', 100))
+                except Exception:
+                    dur_ms = 100
+                cumulative_ms += max(1, dur_ms)
         else:
             frame_img = gif.convert('RGBA')
             if scale < 1.0:
@@ -1659,9 +1687,11 @@ def add_text_layers_to_gif_task(self, gif_path, layers, output_dir, upload_folde
                         block_w = max((draw.textlength(line, font=font) for line in lines), default=0)
                         block_h = max(1, len(lines)) * line_height
                         guard += 1
+                eff_off_x = int(int(l.get('offset_x', 0)) * (scale if scale < 1.0 else 1.0))
+                eff_off_y = int(int(l.get('offset_y', 0)) * (scale if scale < 1.0 else 1.0))
                 pos = calculate_position(frame_img.width, frame_img.height, block_w, block_h,
                                           l.get('horizontal_align', 'center'), l.get('vertical_align', 'middle'),
-                                          int(l.get('offset_x', 0)), int(l.get('offset_y', 0)))
+                                          eff_off_x, eff_off_y)
                 draw_text_block(draw, lines, pos, font, l['color'], l['stroke_color'], int(l.get('stroke_width', 0)), line_height)
             frames.append(frame_img.convert('RGB'))
 
@@ -1679,6 +1709,11 @@ def add_text_layers_to_gif_task(self, gif_path, layers, output_dir, upload_folde
         else:
             logging.error(f"[add_text_layers_to_gif_task] Output GIF was not created: {output_path}")
             raise Exception("Output GIF was not created.")
+        # Capture output size before any optional upload/deletion
+        try:
+            out_size_for_metrics = os.path.getsize(output_path)
+        except Exception:
+            out_size_for_metrics = None
         rel = os.path.relpath(output_path, upload_folder)
         # Optionally upload to GCS
         try:
@@ -1710,7 +1745,7 @@ def add_text_layers_to_gif_task(self, gif_path, layers, output_dir, upload_folde
                 input_height=base_h,
                 input_frames=getattr(gif, 'n_frames', 1),
                 input_size_bytes=os.path.getsize(abs_gif_path) if os.path.exists(abs_gif_path) else None,
-                output_size_bytes=out_size,
+                output_size_bytes=out_size_for_metrics,
                 processing_time_ms=proc_ms,
                 options=f"layers={len(layers)}; peak_kb={peak_kb}"
             )
