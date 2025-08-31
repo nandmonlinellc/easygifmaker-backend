@@ -17,7 +17,9 @@ INDEXNOW_ENDPOINTS: List[str] = [
 ]
 
 # API key and site URL can be overridden via environment variables
-API_KEY: str = os.environ.get("INDEXNOW_KEY", "6bada9110783450bb91db9e0fc88a08c")
+# Default to the same key file published under /7820a1cd5e434c278e39cfeb9ec3b008.txt
+# Prefer overriding via env INDEXNOW_KEY in production.
+API_KEY: str = os.environ.get("INDEXNOW_KEY", "7820a1cd5e434c278e39cfeb9ec3b008")
 SITE_URL: str = os.environ.get("SITE_URL", "https://easygifmaker.com")
 
 

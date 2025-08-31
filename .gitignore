@@ -32,6 +32,8 @@ Thumbs.db
 
 # Uploads folder (temporary files)
 uploads/
+.env
+gcp_deploy.sh
 temp/
 tmp/
 easygifmaker-096f4de9ad4a.json

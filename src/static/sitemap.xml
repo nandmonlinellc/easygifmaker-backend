@@ -114,4 +114,10 @@
     <loc>https://easygifmaker.com/blog/creative-gif-design-tutorial</loc>
     <priority>0.7</priority>
   </url>
+  <url>
+    <loc>https://easygifmaker.com/reverse</loc>
+    <lastmod>2025-08-22</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
 </urlset>

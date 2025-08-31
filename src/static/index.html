@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
-  <title>EasyGIFMaker</title>
+  <title>EasyGIFMaker – Free Online GIF Maker & Editor</title>
   <meta name="description" content="Create, edit and optimize GIFs online for free. Convert videos to GIF, resize, crop, add text and more. No registration required." />
     
     <!-- Inlined critical mobile CSS for above-the-fold performance -->
@@ -35,7 +35,7 @@
       img { image-rendering: -webkit-optimize-contrast !important; }
     }
     </style>
-    <link rel="preload" href="/api/health" as="fetch" crossorigin>
+    <!-- Health check deferred to avoid blocking initial load -->
     <link rel="dns-prefetch" href="//fonts.googleapis.com">
     <link rel="dns-prefetch" href="//cdn.jsdelivr.net">
     <meta name="theme-color" content="#3b82f6">
@@ -50,6 +50,7 @@
     <link rel="preload" href="/fonts/inter-var.woff2" as="font" type="font/woff2" crossorigin>
     
   <!-- Preconnect for performance -->
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="preconnect" href="https://www.googletagmanager.com" />
     <link rel="preconnect" href="https://pagead2.googlesyndication.com" />
     <link rel="preconnect" href="https://googleads.g.doubleclick.net" />
@@ -57,12 +58,14 @@
   <meta name="google-adsense-account" content="ca-pub-2276892930727265" />
   <!-- AdSense base script for verification; ads still respect consent via our loader/components -->
   <script async data-egm="adsbygoogle" src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2276892930727265" crossorigin="anonymous"></script>
-    <script type="module" crossorigin src="/assets/index-9xUD4G-b.js"></script>
-    <link rel="modulepreload" crossorigin href="/assets/react-vendor-C2JJ-PBx.js">
-    <link rel="modulepreload" crossorigin href="/assets/ui-core-98LrUDJY.js">
-    <link rel="modulepreload" crossorigin href="/assets/ui-interactive-D1cGjEFL.js">
-    <link rel="modulepreload" crossorigin href="/assets/utils-vendor-DGRArQkR.js">
-    <link rel="stylesheet" crossorigin href="/assets/index-TKQFanWS.css">
+    <script type="module" crossorigin src="/assets/index-CKUyDW3_.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/react-vendor-0XJsW6_K.js">
+    <link rel="modulepreload" crossorigin href="/assets/ui-core-DuKg1bHI.js">
+    <link rel="modulepreload" crossorigin href="/assets/ui-interactive-BSl_cSRv.js">
+    <link rel="modulepreload" crossorigin href="/assets/utils-vendor-BVsDdTUO.js">
+    <link rel="stylesheet" crossorigin href="/assets/index-DLhg92DK.css">
+    <script type="module">import.meta.url;import("_").catch(()=>1);(async function*(){})().next();if(location.protocol!="file:"){window.__vite_is_modern_browser=true}</script>
+    <script type="module">!function(){if(window.__vite_is_modern_browser)return;console.warn("vite: loading legacy chunks, syntax error above and the same error below should be ignored");var e=document.getElementById("vite-legacy-polyfill"),n=document.createElement("script");n.src=e.src,n.onload=function(){System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))},document.body.appendChild(n)}();</script>
   </head>
   <body>
     <div id="root"></div>
@@ -72,13 +75,13 @@
     <script defer>
       window.addEventListener('DOMContentLoaded', function() {
         window.dataLayer = window.dataLayer || [];
-        function gtag(){dataLayer.push(arguments);}
+        function gtag(){dataLayer.push(arguments);}   
         gtag('js', new Date());
         gtag('config', 'G-4184BKX5QY', { 'anonymize_ip': true });
       });
     </script>
-    <script>
-      (function() {
+    <script defer>
+      window.addEventListener('DOMContentLoaded', function () {
         function removeBaseDescriptionWhenReady() {
           const base = document.querySelector('meta[name="description"]:not([data-rh])');
           const helmet = document.querySelector('meta[name="description"][data-rh="true"]');
@@ -89,12 +92,15 @@
           return false;
         }
         if (!removeBaseDescriptionWhenReady()) {
-          const mo = new MutationObserver(function() {
+          const mo = new MutationObserver(function () {
             if (removeBaseDescriptionWhenReady()) mo.disconnect();
           });
           mo.observe(document.head, { childList: true, subtree: true });
         }
-      })();
+      });
     </script>
+    <script nomodule>!function(){var e=document,t=e.createElement("script");if(!("noModule"in t)&&"onbeforeload"in t){var n=!1;e.addEventListener("beforeload",(function(e){if(e.target===t)n=!0;else if(!e.target.hasAttribute("nomodule")||!n)return;e.preventDefault()}),!0),t.type="module",t.src=".",e.head.appendChild(t),t.remove()}}();</script>
+    <script nomodule crossorigin id="vite-legacy-polyfill" src="/assets/polyfills-legacy-Dt_qrq-d.js"></script>
+    <script nomodule crossorigin id="vite-legacy-entry" data-src="/assets/index-legacy-CL-l3wV8.js">System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))</script>
   </body>
 </html>

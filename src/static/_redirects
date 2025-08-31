@@ -1,3 +1,4 @@
 /api/*    https://easygifmaker-api.fly.dev/api/:splat    200
 /admin/*  https://easygifmaker-api.fly.dev/admin/:splat  200
+/7820a1cd5e434c278e39cfeb9ec3b008.txt  /7820a1cd5e434c278e39cfeb9ec3b008.txt  200
 /*        /index.html   200
